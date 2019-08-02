@@ -124,3 +124,5 @@ work_dirs/
 
 # visualize
 *.mp4
+*.png
+*.jar
