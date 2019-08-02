@@ -126,3 +126,5 @@ work_dirs/
 *.mp4
 *.png
 *.jar
+
+/configs/
