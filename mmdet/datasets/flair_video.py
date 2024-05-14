@@ -31,6 +31,7 @@ class FlairDataset(COCODataset):
         self.caption_prompt = caption_prompt
         self.rgb_to_ir_map_file = rgb_to_ir_map_file
         self.rgb_to_ir_map = self.load_rgb_to_ir_map()
+        self.thermal_prefix = self.image_prefix.replace('video_rgb_test', 'video_thermal_test')
         if self.caption_prompt is not None:
             assert self.return_classes, 'return_classes must be True when using caption_prompt'
         if file_client_args is not None:

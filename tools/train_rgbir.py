@@ -7,6 +7,10 @@ from mmengine.config import Config, DictAction
 from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
 
+from mmdet.datasets import build_dataset, build_dataloader
+from mmdet.models import build_detector
+
+
 from mmdet.utils import setup_cache_size_limit_of_dynamo
 
 
@@ -104,17 +108,25 @@ def main():
         cfg.resume = True
         cfg.load_from = args.resume
 
-    # build the runner from config
-    if 'runner_type' not in cfg:
-        # build the default runner
-        runner = Runner.from_cfg(cfg)
-    else:
-        # build customized runner from the registry
-        # if 'runner_type' is set in the cfg
-        runner = RUNNERS.build(cfg)
 
-    # start training
-    runner.train()
+
+    print(cfg)
+    print(cfg.data.train)
+
+
+    train_datasets = build_dataset(cfg.data.train)
+    data_loader = build_dataloader(
+        train_datasets,
+        samples_per_gpu=2,
+        workers_per_gpu=2,
+        dist=False,
+        shuffle=True)
+    
+
+    print(train_datasets.get_classes_and_palettes())
+
+    model = build_detector(cfg.model, train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg'))
+    
 
 
 if __name__ == '__main__':
