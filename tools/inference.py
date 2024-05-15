@@ -28,7 +28,7 @@ def show_predictions_and_gt(img, result, gt_annotations, category_names, save_ro
                 width, height = x2 - x1, y2 - y1
                 rect = patches.Rectangle((x1, y1), width, height, linewidth=2, edgecolor='green', facecolor='none')
                 ax.add_patch(rect)
-                ax.text(x1, y1, f'Pred: {category_names[label]} {score:.2f}', color='green', fontsize=8)
+                ax.text(x1, y1, f'Pred: {category_names[label-1]} {score:.2f}', color='green', fontsize=8)
     else:
         print("No predictions found")
 
@@ -37,7 +37,7 @@ def show_predictions_and_gt(img, result, gt_annotations, category_names, save_ro
         x, y, w, h = ann['bbox']
         rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='blue', facecolor='none')
         ax.add_patch(rect)
-        ax.text(x, y, f"GT: {category_names[ann['category_id']]}", color='blue', fontsize=8)
+        ax.text(x, y, f"GT: {category_names[ann['category_id']-1]}", color='blue', fontsize=8)
 
     #bgr 2 rgb
     img = img[..., ::-1]
@@ -47,12 +47,13 @@ def show_predictions_and_gt(img, result, gt_annotations, category_names, save_ro
     plt.close()
     
 
-save_root = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/inferences/gt_inference/flir-rgb-gt'
+save_root = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/inferences/gt_inference/flir-rgb-gt-12epoch'
 os.makedirs(save_root, exist_ok=True)
 
 # Path to the configuration file and model weights
 config_file = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas.py'
-checkpoint_file= '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/faster-rcnn_r50_fpn_2x_flair-adas/epoch_24.pth'
+# config_file = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-ir.py'
+checkpoint_file= '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/faster-rcnn_r50_fpn_2x_flair-adas/epoch_12.pth'
 # Initialize the detector
 model = init_detector(config_file, checkpoint_file, device='cuda:0')
 coco = COCO('/ailab_mat/dataset/FLIR_ADAS_v2/images_rgb_train/coco.json')
