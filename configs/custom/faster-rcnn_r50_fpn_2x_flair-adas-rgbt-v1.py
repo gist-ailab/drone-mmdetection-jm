@@ -15,21 +15,22 @@ classes = ('person', 'bike', 'car', 'motor', 'bus', 'train', 'truck', 'light', '
 
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', scale=(1333, 800), keep_ratio=True),
-    dict(type='RandomFlip', prob=0.5),
-    dict(type='PackDetInputs')
+    dict(type='FLIR_Resize', scale=(1333, 800), keep_ratio=True),
+    dict(type='FLIR_CATPackDetInputs'),
+    dict(type='CatRGBT')
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
-    dict(type='Resize', scale=(1333, 800), keep_ratio=True),
-    # If you don't have a gt annotation, delete the pipeline
+    dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(
-        type='PackDetInputs',
-        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                   'scale_factor'))
+    dict(type='FLIR_Resize', scale=(1333, 800), keep_ratio=True),
+    dict(type='FLIR_CATPackDetInputs'),
+    dict(type='CatRGBT')
 ]
+]
+
 train_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -39,7 +40,7 @@ train_dataloader = dict(
     dataset=dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
-        data_root = os.path.join(data_root, 'images_rgb_train'),
+        data_root = os.path.join(data_root, 'video_rgb_test'),
         ann_file='coco.json',
         data_prefix=dict(img=''),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
@@ -55,17 +56,18 @@ val_dataloader = dict(
     dataset=dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
-        data_root=os.path.join(data_root,'images_rgb_val'),
+        data_root=os.path.join(data_root,'video_rgb_test'),
         ann_file='coco.json',
         data_prefix=dict(img=''),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
+
 test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root,'images_rgb_val','coco.json'),
+    ann_file=os.path.join(data_root,'video_rgb_test','coco.json'),
     metric='bbox',
     format_only=False,
     backend_args=backend_args)
