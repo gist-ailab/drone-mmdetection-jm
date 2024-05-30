@@ -39,15 +39,10 @@ class LoadThermalImageFromFile(LoadImageFromFile):
             img = img.astype(np.float32)
 
 
-        results['thermal_img'] = img
-        results['thermal_img_shape'] = img.shape[:2]
-        results['thermal_ori_shape'] = img.shape[:2]
+        results['ir'] = img
+        results['ir_img_shape'] = img.shape[:2]
+        results['ir_ori_shape'] = img.shape[:2]
         return results
-
-
-
-
-
 
 
 @TRANSFORMS.register_module()

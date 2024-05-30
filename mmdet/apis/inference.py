@@ -22,7 +22,6 @@ from ..registry import MODELS
 from ..structures import DetDataSample, SampleList
 from ..utils import get_test_pipeline_cfg
 
-
 def init_detector(
     config: Union[str, Path, Config],
     checkpoint: Optional[str] = None,
@@ -134,7 +133,7 @@ def inference_detector(
            Either image files or loaded images.
         test_pipeline (:obj:`Compose`): Test pipeline.
 
-    Returns:
+    Returns:get_test_pipeline_cfg
         :obj:`DetDataSample` or list[:obj:`DetDataSample`]:
         If imgs is a list or tuple, the same length list type results
         will be returned, otherwise return the detection results directly.

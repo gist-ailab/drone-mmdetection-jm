@@ -53,7 +53,7 @@ def vis_pred(img, result, classes, score_thr=0.5):
         score = scores[i]
         label = labels[i]
         color = COLOR_PALETTE[label]
-        if score < score_thr:
+        if score > score_thr:
             cv2.rectangle(img_result,  (int(bbox[0]), int(bbox[1])), (int(bbox[2]),int(bbox[3])), color, 1)
             cv2.putText(img_result, f'{classes[label]}: {score:.2f}', (int(bbox[0])-2, int(bbox[1])-2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
     return img_result

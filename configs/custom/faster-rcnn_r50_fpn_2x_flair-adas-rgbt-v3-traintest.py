@@ -11,7 +11,7 @@ dataset_type = 'FLIRCatDataset'
 data_root = '/ailab_mat/dataset/FLIR_ADAS_v2'
 backend_args = None
 
-classes = ('person', 'bike', 'car', 'motor', 'bus', 'train', 'truck', 'light', 'hydrant','sign', 'dog', 'skaterboard', 'stroller',  'scooter', 'other Vehicle' )
+classes = ('car', 'person', 'truck', 'sign', 'motor', 'light', 'dog', 'hydrant', 'bike', 'other vehicle')
 
 model = dict(
     type = 'MultiModalFasterRCNN',
@@ -54,8 +54,7 @@ train_dataloader = dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
         data_root = os.path.join(data_root, 'video_rgb_test'),
-        # ann_file='coco.json',
-        ann_file = 'train_coco_v1.json',
+        ann_file = 'train_coco_v3.json',
         data_prefix=dict(img=''),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
@@ -71,8 +70,7 @@ val_dataloader = dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
         data_root=os.path.join(data_root,'video_rgb_test'),
-        # ann_file='coco.json',
-        ann_file='test_coco_v1.json',
+        ann_file='test_coco_v3.json',
         data_prefix=dict(img=''),
         test_mode=True,
         pipeline=test_pipeline,
@@ -82,7 +80,7 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root,'video_rgb_test','coco.json'),
+    ann_file=os.path.join(data_root,'video_rgb_test','test_coco_v3.json'),
     metric='bbox',
     format_only=False,
     backend_args=backend_args)

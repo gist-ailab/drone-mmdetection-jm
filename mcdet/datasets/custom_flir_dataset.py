@@ -24,7 +24,6 @@ class FLIRCatDataset(CocoDataset):
 
     def __init__(self, *args, test_ratio=0.1, **kwargs):
         super(FLIRCatDataset, self).__init__(*args, **kwargs)
-        print("[DATASET INFO]: {}".format(self.rgb2thermal))
 
 
     def full_init(self) -> None:
@@ -51,13 +50,16 @@ class FLIRCatDataset(CocoDataset):
             return
         # load data information
         self.rgb2thermal = json.load(open(os.path.join(os.path.dirname(self.data_root), 'rgb_to_thermal_vid_map.json')))
-
         self.data_list = self.load_data_list()
+
+        print("[Loader info] datalist is loaded  : {}".format(len(self.data_list)))
+        
         # get proposals from file
         if self.proposal_file is not None:
             self.load_proposals()
         # filter illegal data, such as data that has no annotations.
         self.data_list = self.filter_data()
+        print('[Dataset info]: num_data = {}'.format(len(self.data_list)))
 
         # Get subset data according to indices.
         if self._indices is not None:
@@ -83,7 +85,6 @@ class FLIRCatDataset(CocoDataset):
         ann_info = raw_data_info['raw_ann_info']
 
         data_info = {}
-
         # TODO: need to change data_prefix['img'] to data_prefix['img_path']
         img_path = osp.join(self.data_prefix['img'], img_info['file_name'])
         if self.data_prefix.get('seg', None):

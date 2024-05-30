@@ -39,7 +39,6 @@ train_dataloader = dict(
     dataset=dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
-        # data_root = data_root+'/images_thermal_train',
         data_root = os.path.join(data_root, 'images_thermal_train'),
         ann_file='coco.json',
         data_prefix=dict(img=''),

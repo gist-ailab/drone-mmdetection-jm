@@ -11,23 +11,15 @@ from mmdet.utils import setup_cache_size_limit_of_dynamo
 import mcdet
 import easydict
 
-CUDA_VISIBLE_DEVICES = '0'
+CUDA_VISIBLE_DEVICES = '5'
 
 os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
 
-
 def parse_args():
-    # parser = argparse.ArgumentParser(description='Train a detector')
-    # parser.add_argument('config', help='train config file path', default= '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v1.py')
-    # parser.add_argument('--work-dir', help='the dir to save logs and models', default = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/')
-    # parser.add_argument('--amp', action='store_true', default=False, help='enable automatic-mixed-precision training')
-    # parser.add_argument('--auto-scale-lr', action='store_true', default=True, help='enable automatically scaling LR.')
-    # parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm', 'mpi'], default='none', help='job launcher')
-    # parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-
     # args = parser.parse_args()
     args = easydict.EasyDict({
-        'config': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v1.py',
+        'config': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-AttSE.py',
+        # 'config': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-traintest.py',
         'work_dir': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/Debug',
         'amp': False,
         'auto_scale_lr': True,
@@ -89,6 +81,8 @@ def main():
     if 'runner_type' not in cfg:
         # build the default runner
         runner = Runner.from_cfg(cfg)
+
+        print("checkpoint")
     else:
         # build customized runner from the registry
         # if 'runner_type' is set in the cfg
