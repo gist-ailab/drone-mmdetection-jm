@@ -27,19 +27,18 @@ model = dict(
         ],
         out_channels=128
     ),
-    att=dict(
+    att =dict(
         type='SELayer',
         in_channels=128
     ),
     post_att = dict(
-        type='SELayer',
-        in_channels=256
+        type='SpatialATT'
     ),
     roi_head=dict(
         bbox_head=dict(
             num_classes=len(classes)
         )
-    )
+    ),
 )
 
 

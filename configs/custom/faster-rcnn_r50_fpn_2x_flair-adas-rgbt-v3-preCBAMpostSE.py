@@ -27,11 +27,11 @@ model = dict(
         ],
         out_channels=128
     ),
-    att=dict(
-        type='SELayer',
+    att = dict(
+        type='CBAM',
         in_channels=128
     ),
-    post_att = dict(
+    post_att =dict(
         type='SELayer',
         in_channels=256
     ),
@@ -39,7 +39,7 @@ model = dict(
         bbox_head=dict(
             num_classes=len(classes)
         )
-    )
+    ),
 )
 
 

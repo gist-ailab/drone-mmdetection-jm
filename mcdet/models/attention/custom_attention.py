@@ -10,24 +10,6 @@ from mmengine.utils import digit_version, is_tuple_of
 from torch import Tensor
 from mmdet.utils import MultiConfig, OptConfigType, OptMultiConfig
 
-
-# @MODELS.register_module()
-# class SE(nn.Module):
-#     def __init__(self, in_channels, reduction=16):
-#         super(SE, self).__init__()
-#         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-#         self.fc = nn.Sequential(
-#             nn.Linear(in_channels, in_channels // reduction, bias=False),
-#             nn.ReLU(inplace=True),
-#             nn.Linear(in_channels // reduction, in_channels, bias=False),
-#             nn.Sigmoid()
-#         )
-
-#     def forward(self, x):
-#         b, c, _, _ = x.size()
-#         y = self.avg_pool(x).view(b, c)
-#         y = self.fc(y).view(b, c, 1, 1)
-#         return x * y
     
 @MODELS.register_module()
 class SELayer(BaseModule):
@@ -113,17 +95,25 @@ class SpatialATT(BaseModule):
     
 @MODELS.register_module()
 class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+    def __init__(self, in_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
         super(CBAM, self).__init__()
-        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
+        self.ChannelGate = ChannelGate(in_channels, reduction_ratio, pool_types)
         self.no_spatial=no_spatial
         if not no_spatial:
             self.SpatialGate = SpatialGate()
-    def forward(self, x):
-        x_out = self.ChannelGate(x)
+
+    def _forward(self, x_):
+        x_out = self.ChannelGate(x_)
         if not self.no_spatial:
             x_out = self.SpatialGate(x_out)
         return x_out
+
+    def forward(self, x):
+        output = []
+        for i in range(len(x)):
+            output.append(self._forward(x[i]))
+        output = tuple(output)
+        return output
 
 
 #---utils--
@@ -158,6 +148,7 @@ class ChannelGate(nn.Module):
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
             )
         self.pool_types = pool_types
+
     def forward(self, x):
         channel_att_sum = None
         for pool_type in self.pool_types:

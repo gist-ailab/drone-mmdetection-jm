@@ -14,26 +14,12 @@ backend_args = None
 classes = ('person', 'bike', 'car', 'motor', 'bus', 'train', 'truck', 'light', 'hydrant','sign', 'dog', 'skaterboard', 'stroller',  'scooter', 'other Vehicle' )
 
 model = dict(
-    type = 'MultiModalAttFasterRCNN',
+    type = 'MultiModalFasterRCNN',
     data_preprocessor=dict(
         type='MultiModalDetDataPreprocessor',
     ),
     backbone=dict(
-        in_channels=3
-    ),
-    neck=dict(
-        in_channels=[
-            256, 512, 1024, 2048,
-        ],
-        out_channels=128
-    ),
-    att=dict(
-        type='SELayer',
-        in_channels=128
-    ),
-    post_att = dict(
-        type='SELayer',
-        in_channels=256
+        in_channels=6
     ),
     roi_head=dict(
         bbox_head=dict(
@@ -41,7 +27,6 @@ model = dict(
         )
     )
 )
-
 
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
@@ -69,7 +54,7 @@ train_dataloader = dict(
         metainfo=dict(classes=classes),
         type=dataset_type,
         data_root = os.path.join(data_root, 'video_rgb_test'),
-        ann_file = 'train_coco_v4.json',
+        ann_file = 'train_coco_v2.json',
         data_prefix=dict(img=''),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
@@ -96,13 +81,11 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root,'video_rgb_test','test_coco_v4.json'),
+    ann_file=os.path.join(data_root,'video_rgb_test','test_coco_v2.json'),
     metric='bbox',
     format_only=False,
     backend_args=backend_args)
 test_evaluator = val_evaluator
-
-
 
 
 

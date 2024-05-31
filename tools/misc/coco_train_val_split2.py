@@ -49,6 +49,6 @@ def create_coco_json(images, annotations, categories, file_name):
         json.dump({'images': images, 'annotations': annotations, 'categories': coco['categories'], 'info': coco['info']}, f)
 
 # Save new COCO files
-create_coco_json(train_images.to_dict(orient='records'), train_annotations, coco['categories'], save_path+'/train_coco_tmp.json')
-create_coco_json(val_images.to_dict(orient='records'), val_annotations, coco['categories'],  save_path+'/test_coco_tmp.json')
+create_coco_json(train_images.to_dict(orient='records'), train_annotations, coco['categories'], save_path+'/train_coco_v4_1.json')
+create_coco_json(val_images.to_dict(orient='records'), val_annotations, coco['categories'],  save_path+'/test_coco_v4_1.json')
 # %%

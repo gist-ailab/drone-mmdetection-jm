@@ -11,23 +11,23 @@ from mmdet.utils import setup_cache_size_limit_of_dynamo
 import mcdet
 import easydict
 
-CUDA_VISIBLE_DEVICES = '5'
+# CUDA_VISIBLE_DEVICES = '5'
 
-os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
+# os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
 
 def parse_args():
+    config_pth = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-traintest.py'
     # args = parser.parse_args()
     args = easydict.EasyDict({
-        'config': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-AttSE.py',
-        # 'config': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-traintest.py',
-        'work_dir': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/Debug',
+        'config': config_pth,
+        # 'work_dir': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/Debug',
+        'work_dir': osp.join('./work_dirs', osp.splitext(osp.basename(config_pth))[0]),
         'amp': False,
         'auto_scale_lr': True,
         'launcher': 'none',
         'local_rank': 0,
         'resume': None
     })
-
 
     return args
 
@@ -42,6 +42,11 @@ def main():
     # load config
     cfg = Config.fromfile(args.config)
     cfg.launcher = args.launcher
+
+    #---
+    if args.cfg_options is not None:
+        cfg.merge_from_dict(args.cfg_options)
+    #--
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
@@ -81,8 +86,6 @@ def main():
     if 'runner_type' not in cfg:
         # build the default runner
         runner = Runner.from_cfg(cfg)
-
-        print("checkpoint")
     else:
         # build customized runner from the registry
         # if 'runner_type' is set in the cfg
