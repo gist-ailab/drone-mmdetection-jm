@@ -14,5 +14,5 @@ __all__ = [
     'FLIRCatDataset','FLIR_CatRunner', 'FLIR_CATPackDetInputs', 'LoadThermalImageFromFile','CatRGBT',\
     'FLIR_Resize','CustomSampler', 'PackMultiModalDetInputs', 'MultiModalDetDataPreprocessor',\
     'BaseMultiModalDetector','MultiModalFasterRCNN', 'inference_rgbt_detector', 'MultiModalAttDetector',\
-    'MultiModalAttFasterRCNN', 'SE', 'CBAM', 'SELayer'
+    'MultiModalAttFasterRCNN', 'SE', 'CBAM', 'SELayer', 'SpatialATT'
     ]

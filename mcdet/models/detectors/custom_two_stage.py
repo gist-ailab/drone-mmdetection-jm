@@ -357,7 +357,7 @@ class MultiModalAttDetector(MultiModalTwoStageDetector):
         x = tuple(x)
         x= self.post_att(x)
         return x
-        
+
     
     def _forward(self, batch_inputs_rgb: Tensor, batch_inputs_ir: Tensor,
                  batch_data_samples: SampleList) -> tuple:

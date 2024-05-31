@@ -76,10 +76,8 @@ def train_test_split_coco(ann_file, train_ratio, prefix):
     print(f"[INFO]: Training and test sets saved to {save_path}")
 
 
-# train_test_split_coco('/ailab_mat/dataset/FLIR_ADAS_v2/video_rgb_test/coco.json', 0.8, 'coco_v2')
 
-
-# import some common libraries
+#%%
 import numpy as np
 import os, json, cv2, random
 from pycocotools.coco import COCO
@@ -87,10 +85,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import funcy
 import ast
-
-
 
 def save_coco(file, info, licenses, images, annotations, categories):
     with open(file, 'wt', encoding='UTF-8') as f:
@@ -103,6 +98,9 @@ def get_ann(idx, list):
         ann = coco.loadAnns(anns[j])[0]
         list.append(ann)
     return list
+
+
+#%%
 
 save_path = '/ailab_mat/dataset/FLIR_ADAS_v2/video_rgb_test'
 path = os.path.join(save_path,'coco.json')
@@ -121,10 +119,10 @@ for i in range(len(categories)):
     if len(n.split('.'))==2:
         categories[i].clear()
 categories = list(filter(None, categories))  #remove duplicated categories
+#%%
 
 # %%
 train_categories, val_categories  = categories, categories
-# train_images, val_images = images[:30000], images[30000:37500]
 img_num = len(images)
 ratio = 0.8
 split_index = int(ratio * len(images))

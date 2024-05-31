@@ -11,23 +11,23 @@ from torch import Tensor
 from mmdet.utils import MultiConfig, OptConfigType, OptMultiConfig
 
 
-@MODELS.register_module()
-class SE(nn.Module):
-    def __init__(self, in_channels, reduction=16):
-        super(SE, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(in_channels, in_channels // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(in_channels // reduction, in_channels, bias=False),
-            nn.Sigmoid()
-        )
+# @MODELS.register_module()
+# class SE(nn.Module):
+#     def __init__(self, in_channels, reduction=16):
+#         super(SE, self).__init__()
+#         self.avg_pool = nn.AdaptiveAvgPool2d(1)
+#         self.fc = nn.Sequential(
+#             nn.Linear(in_channels, in_channels // reduction, bias=False),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(in_channels // reduction, in_channels, bias=False),
+#             nn.Sigmoid()
+#         )
 
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y
+#     def forward(self, x):
+#         b, c, _, _ = x.size()
+#         y = self.avg_pool(x).view(b, c)
+#         y = self.fc(y).view(b, c, 1, 1)
+#         return x * y
     
 @MODELS.register_module()
 class SELayer(BaseModule):
@@ -89,6 +89,27 @@ class SELayer(BaseModule):
             output.append(self._forward(x[i]))
         output = tuple(output)
         return output
+    
+
+@MODELS.register_module()
+class SpatialATT(BaseModule):
+    def __init__(self,
+                init_cfg: OptMultiConfig = None) -> None:
+        super().__init__(init_cfg = init_cfg)
+        self.SpatialGate = SpatialGate()
+
+    def _forward(self, x_):
+        x_out = self.SpatialGate(x_)
+        return x_out
+    
+    def forward(self, x: Tensor) -> Tensor:
+        output =  []
+        for i in range(len(x)):
+            output.append(self._forward(x[i]))
+        output = tuple(output)
+        return output
+
+        return 
     
 @MODELS.register_module()
 class CBAM(nn.Module):
@@ -169,6 +190,7 @@ def logsumexp_2d(tensor):
     return outputs
 
 class ChannelPool(nn.Module):
+    '''Concat maxpool and avgpool'''
     def forward(self, x):
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
