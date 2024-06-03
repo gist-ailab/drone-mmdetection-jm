@@ -12,7 +12,9 @@ data_root = '/ailab_mat/dataset/FLIR_ADAS_v2'
 backend_args = None
 
 classes = ('person', 'bike', 'car', 'motor', 'bus', 'train', 'truck', 'light', 'hydrant','sign', 'dog', 'skaterboard', 'stroller',  'scooter', 'other Vehicle' )
-
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001))
 
 model = dict(
     type = 'MultiModalAttFasterRCNN',
@@ -29,7 +31,7 @@ model = dict(
         out_channels=128
     ),
     att = dict(
-        type='CBAM',
+        type='SELayer',
         in_channels=128
     ),
     post_att =dict(
