@@ -91,7 +91,6 @@ class SpatialATT(BaseModule):
         output = tuple(output)
         return output
 
-        return 
     
 @MODELS.register_module()
 class CBAM(nn.Module):

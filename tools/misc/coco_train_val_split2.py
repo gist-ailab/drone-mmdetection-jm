@@ -11,7 +11,6 @@ with open(save_path+'/coco.json', 'r') as file:
     coco = json.load(file)
 
 #%%
-
 # Create a DataFrame for images
 images_df = pd.DataFrame(coco['images'])
 

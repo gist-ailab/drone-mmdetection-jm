@@ -16,11 +16,11 @@ import easydict
 # os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
 
 def parse_args():
-    config_pth = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v2-traintest.py'
+    config_pth = '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_ser50_fpn_2x_flair-adas-rgbt-v1-preSpatialpostSE_LR0.005.py'
+    # config_pth='/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/configs/custom/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v3-preSpatialpostSE_LR0.005.py'
     # args = parser.parse_args()
     args = easydict.EasyDict({
         'config': config_pth,
-        # 'work_dir': '/ailab_mat/personal/maeng_jemo/Project/24-Drone/Detection/mmdetection-drone-jemo/work_dirs/Debug',
         'work_dir': osp.join('./work_dirs', osp.splitext(osp.basename(config_pth))[0]),
         'amp': False,
         'auto_scale_lr': True,
@@ -43,10 +43,10 @@ def main():
     cfg = Config.fromfile(args.config)
     cfg.launcher = args.launcher
 
-    #---
-    if args.cfg_options is not None:
-        cfg.merge_from_dict(args.cfg_options)
-    #--
+    # #---
+    # if args.cfg_options is not None:
+    #     cfg.merge_from_dict(args.cfg_options)
+    # #--
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:

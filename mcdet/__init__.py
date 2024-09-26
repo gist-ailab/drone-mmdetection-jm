@@ -8,11 +8,12 @@ from .datasets.custom_sampler import CustomSampler
 from .models.data_preprocessors.custom_preprocessor import *
 from .models.detectors.custom_base import BaseMultiModalDetector
 from .models.detectors.custom_faster_rcnn import MultiModalFasterRCNN, MultiModalAttFasterRCNN
+from .models.backbones.custom_resnet import ATTResNet
 from .models.attention.custom_attention import *
-
+from .models.layers.custom_res_layer import *
 __all__ = [
     'FLIRCatDataset','FLIR_CatRunner', 'FLIR_CATPackDetInputs', 'LoadThermalImageFromFile','CatRGBT',\
     'FLIR_Resize','CustomSampler', 'PackMultiModalDetInputs', 'MultiModalDetDataPreprocessor',\
     'BaseMultiModalDetector','MultiModalFasterRCNN', 'inference_rgbt_detector', 'MultiModalAttDetector',\
-    'MultiModalAttFasterRCNN', 'SE', 'CBAM', 'SELayer', 'SpatialATT'
+    'MultiModalAttFasterRCNN', 'SE', 'CBAM', 'SELayer', 'SpatialATT', 'ATTResNet','Custom_ResLayer'
     ]
