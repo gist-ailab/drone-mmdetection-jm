@@ -6,6 +6,8 @@ from datetime import datetime
 import random
 import shutil
 from pycocotools.coco import COCO
+import numpy as np
+import natsort
 
 # Define a consistent category mapping
 mapped_category = {
@@ -63,12 +65,11 @@ def split_process(folders, root):
             src_img = folder / old_file_name
             dst_img = save_pth / "rgb_images" / f"{folder.name}_{file_name}"
             dst_img.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(src_img, dst_img)
+            # shutil.copy(src_img, dst_img)
             image_id += 1
 
     # Use the consistent category mapping for merged categories
     categories = [{'id': cat_id, 'name': cat_name} for cat_name, cat_id in mapped_category.items()]
-    # categories = data['categories']
     ann_dict = {
         'images': all_images,
         'annotations': all_annotations,
@@ -76,7 +77,237 @@ def split_process(folders, root):
     }
     return ann_dict
 
-def trainval_split(root: Path, train_ratio=0.8):
+def frame_split_process(ann, train_ratio):
+    '''
+    Split coco annotation by ratio
+    '''
+
+
+    total_images = len(ann['images'])
+    total_annotations = len(ann['annotations'])
+    train_num = int(total_images * train_ratio)
+    val_num = len(ann['images']) - train_num
+    
+    id_idx = np.arange(1, total_images+1)
+    space = 2
+    val_id_idx = np.arange(2, space * val_num, space)
+    train_id_idx = np.array([i for i in id_idx if i not in val_id_idx])
+
+    train_images = [img for img in ann['images'] if img['id'] in train_id_idx]
+    val_images = [img for img in ann['images'] if img['id'] in val_id_idx]
+    train_anns = [ann for ann in ann['annotations'] if ann['image_id'] in train_id_idx]
+    val_anns = [ann for ann in ann['annotations'] if ann['image_id'] in val_id_idx]
+
+    train_ann = {
+        'images': train_images,
+        'annotations': train_anns,
+        'categories': ann['categories']
+    }
+
+    val_ann = {
+        'images': val_images,
+        'annotations': val_anns,
+        'categories': ann['categories']
+    }
+    return train_ann, val_ann
+
+
+def random_split_process(folders, train_ratio):
+    '''
+    Split coco annotation by ratio
+    '''
+    train_image_id = 1
+    train_ann_id = 1
+    val_image_id = 1
+    val_ann_id = 1
+
+
+    all_train_imgs = []
+    all_val_imgs = []
+    all_train_anns = []
+    all_val_anns = []
+    for folder in folders:
+        # Load annotations
+        ann_file = folder / "annotations.json"
+        with open(ann_file, 'r') as f:
+            data = json.load(f)
+        coco = COCO(ann_file)
+
+        total_images = len(data['images'])
+        total_annotations = len(data['annotations'])
+        train_num = int(total_images * train_ratio)
+        val_num = len(data['images']) - train_num
+    
+        id_idx = np.arange(0, total_images)
+        train_id_idx = natsort.natsorted(np.random.choice(id_idx, train_num, replace=False))
+        val_id_idx = natsort.natsorted(np.array([i for i in id_idx if i not in train_id_idx]))
+
+        for train_id in train_id_idx:
+            # img = [img for img in data['images'] if img['id'] == train_id][0]
+            img = coco.loadImgs(int(train_id))[0]
+            img['id'] = train_image_id
+            img['file_name'] = f"rgb_images/{folder.name}_{img['file_name'].split('/')[-1]}"
+            all_train_imgs.append(img)
+            # anns = [ann for ann in data['annotations'] if ann['image_id'] == train_id]
+            anns = coco.loadAnns(coco.getAnnIds(imgIds=train_id))
+            for ann in anns:
+                ann['id'] = train_ann_id
+                ann['image_id'] = train_image_id
+                all_train_anns.append(ann)
+                train_ann_id += 1
+            train_image_id += 1
+        
+        for val_id in val_id_idx:
+            # img = [img for img in ann['images'] if img['id'] == val_id][0]
+            img = coco.loadImgs(int(val_id))[0]
+            img['id'] = val_image_id
+            img['file_name'] = f"rgb_images/{folder.name}_{img['file_name'].split('/')[-1]}"
+            all_val_imgs.append(img)
+            anns = coco.loadAnns(coco.getAnnIds(imgIds=val_id))
+            for ann in anns:
+                ann['id'] = val_ann_id
+                ann['image_id'] = val_image_id
+                all_val_anns.append(ann)
+                val_ann_id += 1
+            val_image_id += 1
+    
+    train_ann = {
+        'images': all_train_imgs,
+        'annotations': all_train_anns,
+        'categories': data['categories']
+    }
+
+    val_ann = {
+        'images': all_val_imgs,
+        'annotations': all_val_anns,
+        'categories': data['categories']
+    }
+    return train_ann, val_ann
+
+def frame_last_ratio_process(folders, train_ratio):
+    '''
+    Split coco annotation by ratio with last frame
+    '''
+    train_image_id = 1
+    train_ann_id = 1
+    val_image_id = 1
+    val_ann_id = 1
+
+
+    all_train_imgs = []
+    all_val_imgs = []
+    all_train_anns = []
+    all_val_anns = []
+    for folder in folders:
+        # Load annotations
+        ann_file = folder / "annotations.json"
+        with open(ann_file, 'r') as f:
+            data = json.load(f)
+        coco = COCO(ann_file)
+
+        total_images = len(data['images'])
+        total_annotations = len(data['annotations'])
+        train_num = int(total_images * train_ratio)
+        val_num = len(data['images']) - train_num
+    
+        id_idx = np.arange(0, total_images)
+        # train_id_idx = natsort.natsorted(np.random.choice(id_idx, train_num, replace=False))
+        # val_id_idx = natsort.natsorted(np.array([i for i in id_idx if i not in train_id_idx]))
+        train_id_idx = id_idx[:train_num]
+        val_id_idx = id_idx[train_num:]
+
+        for train_id in train_id_idx:
+            # img = [img for img in data['images'] if img['id'] == train_id][0]
+            img = coco.loadImgs(int(train_id))[0]
+            img['id'] = train_image_id
+            img['file_name'] = f"rgb_images/{folder.name}_{img['file_name'].split('/')[-1]}"
+            all_train_imgs.append(img)
+            # anns = [ann for ann in data['annotations'] if ann['image_id'] == train_id]
+            anns = coco.loadAnns(coco.getAnnIds(imgIds=train_id))
+            for ann in anns:
+                ann['id'] = train_ann_id
+                ann['image_id'] = train_image_id
+                all_train_anns.append(ann)
+                train_ann_id += 1
+            train_image_id += 1
+        
+        for val_id in val_id_idx:
+            # img = [img for img in ann['images'] if img['id'] == val_id][0]
+            img = coco.loadImgs(int(val_id))[0]
+            img['id'] = val_image_id
+            img['file_name'] = f"rgb_images/{folder.name}_{img['file_name'].split('/')[-1]}"
+            all_val_imgs.append(img)
+            anns = coco.loadAnns(coco.getAnnIds(imgIds=val_id))
+            for ann in anns:
+                ann['id'] = val_ann_id
+                ann['image_id'] = val_image_id
+                all_val_anns.append(ann)
+                val_ann_id += 1
+            val_image_id += 1
+    
+    train_ann = {
+        'images': all_train_imgs,
+        'annotations': all_train_anns,
+        'categories': data['categories']
+    }
+
+    val_ann = {
+        'images': all_val_imgs,
+        'annotations': all_val_anns,
+        'categories': data['categories']
+    }
+    return train_ann, val_ann
+
+
+def split_by_random(root: Path, train_ratio=0.8, file_prefix = "frameRandom_"):
+    '''
+    Random split with total frames
+    '''
+    
+    output_dir = root / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    folders = [f for f in output_dir.iterdir() if f.is_dir() and f.name.startswith('drone')]
+    train_ann, val_ann = random_split_process(folders, train_ratio)
+
+    with open(output_dir / f"{file_prefix}train.json", 'w') as f:
+        json.dump(train_ann, f, indent=2)
+    with open(output_dir / f"{file_prefix}val.json", 'w') as f:
+        json.dump(val_ann, f, indent=2)
+
+
+def split_by_frame(root: Path, train_ratio=0.8, file_prefix = "frame_"):
+    '''
+    Train test split with frame level
+    '''
+    
+    output_dir = root / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    folders = [f for f in output_dir.iterdir() if f.is_dir() and f.name.startswith('drone')]
+    ann = split_process(folders, root)
+
+    train_ann, val_ann = frame_split_process(ann, train_ratio)
+    with open(output_dir / f"{file_prefix}train.json", 'w') as f:
+        json.dump(train_ann, f, indent=2)
+    with open(output_dir / f"{file_prefix}val.json", 'w') as f:
+        json.dump(val_ann, f, indent=2)
+
+
+def split_by_lastframe(root: Path, train_ratio=0.8, file_prefix = "frameVideo_"):
+    '''
+    Train test split with frame sequentially
+    '''
+    
+    output_dir = root / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    folders = [f for f in output_dir.iterdir() if f.is_dir() and f.name.startswith('drone')]
+    train_ann, val_ann = frame_last_ratio_process(folders, train_ratio)
+
+    with open(output_dir / f"{file_prefix}train.json", 'w') as f:
+        json.dump(train_ann, f, indent=2)
+    with open(output_dir / f"{file_prefix}val.json", 'w') as f:
+        json.dump(val_ann, f, indent=2)
+
+def split_by_file(root: Path, train_ratio=0.8, file_prefix = 'file_'):
     """
     Merge annotations from multiple folders and split into train/val sets
     
@@ -87,21 +318,28 @@ def trainval_split(root: Path, train_ratio=0.8):
     # Get all output folders
     output_dir = root / "output"
     folders = [f for f in output_dir.iterdir() if f.is_dir() and f.name.startswith('drone')]
-    train_folders = random.sample(folders, int(len(folders) * train_ratio))
-    val_folders = [f for f in folders if f not in train_folders]
+    val_folders = [folders[1], folders[6]]
+    train_folders = [f for f in folders if f not in val_folders]
+    # train_folders = random.sample(folders, 8)
+    # val_folders = [f for f in folders if f not in train_folders]
+    # val_folders = 
+
     train_ann = split_process(train_folders, root)
     val_ann = split_process(val_folders, root)
 
-    with open(output_dir / "train.json", 'w') as f:
+    with open(output_dir / "video_train.json", 'w') as f:
         json.dump(train_ann, f, indent=2)
     
-    with open(output_dir / "val.json", 'w') as f:
+    with open(output_dir / "video_val.json", 'w') as f:
         json.dump(val_ann, f, indent=2)
 
 
+
+
+
 def main():
-    root = Path("/media/ailab/HDD1/Workspace/dset/Drone-Detection-Custom/241108-indoor-gist")
-    trainval_split(root)
+    root = Path("/media/ailab/HDD1/Workspace/dset/Drone-Detection-Custom/241108-indoor-gist/")
+    split_by_file(root)
 
 
 if __name__ == "__main__":
