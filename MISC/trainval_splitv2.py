@@ -320,9 +320,6 @@ def split_by_file(root: Path, train_ratio=0.8, file_prefix = 'file_'):
     folders = [f for f in output_dir.iterdir() if f.is_dir() and f.name.startswith('drone')]
     val_folders = [folders[1], folders[6]]
     train_folders = [f for f in folders if f not in val_folders]
-    # train_folders = random.sample(folders, 8)
-    # val_folders = [f for f in folders if f not in train_folders]
-    # val_folders = 
 
     train_ann = split_process(train_folders, root)
     val_ann = split_process(val_folders, root)
