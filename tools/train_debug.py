@@ -8,11 +8,12 @@ from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
 
 from mmdet.utils import setup_cache_size_limit_of_dynamo
+from mcdet import *
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config',default='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/configs/custom/faster-rcnn_r50_fpn_2x_GISTindoor.py', help='train config file path')
+    parser.add_argument('--config',default='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/kaist_rgbt/AttNet_r50_fpn_2x_flair-adas-rgbt-v4-traintest.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',

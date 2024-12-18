@@ -1,3 +1,4 @@
+# /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/mcdet/models/detectors/custom_faster_rcnn.py
 from mmdet.registry import MODELS
 from mmdet.utils import ConfigType, OptConfigType, OptMultiConfig
 from .custom_two_stage import MultiModalTwoStageDetector, MultiModalAttDetector

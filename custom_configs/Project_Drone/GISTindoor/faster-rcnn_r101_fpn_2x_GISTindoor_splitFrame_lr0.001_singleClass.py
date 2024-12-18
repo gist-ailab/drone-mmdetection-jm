@@ -6,12 +6,11 @@ _base_ = [
     '../../../configs/_base_/schedules/schedule_2x.py',
     '../../../configs/_base_/default_runtime.py'
 ]
-
 dataset_type = 'CocoDataset'
 data_root = '/media/ailab/HDD1/Workspace/dset/Drone-Detection-Custom/241108-indoor-gist/output'
 backend_args = None
 
-classes = ('human', 'Door', 'fire extinguisher', 'exit pannel', 'window')
+classes = ('human')
 
 model = dict(
     type='FasterRCNN',
@@ -45,7 +44,6 @@ test_pipeline = [
     dict(type='Resize', scale=(480, 640), keep_ratio=True),
     dict(type='PackDetInputs'),
 ]
-
 
 train_dataloader = dict(
     batch_size=2,
@@ -91,6 +89,6 @@ test_evaluator = val_evaluator
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.0001, momentum=0.9, weight_decay=0.0001))
+    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001))
 
 

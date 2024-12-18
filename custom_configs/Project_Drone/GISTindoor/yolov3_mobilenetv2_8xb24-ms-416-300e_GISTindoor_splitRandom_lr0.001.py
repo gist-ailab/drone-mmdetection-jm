@@ -1,5 +1,5 @@
 import os
-_base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
+_base_ = ['../../../configs/_base_/schedules/schedule_1x.py', '../../../configs/_base_/default_runtime.py']
 # model settings
 dataset_type = 'CocoDataset'
 data_root = '/media/ailab/HDD1/Workspace/dset/Drone-Detection-Custom/241108-indoor-gist/output'
@@ -134,7 +134,7 @@ train_dataloader = dict(
 
 
 val_dataloader = dict(
-    batch_size=24,
+    batch_size=1,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
