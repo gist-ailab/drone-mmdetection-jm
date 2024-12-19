@@ -1,4 +1,5 @@
 import os
+# import mmdet
 # dataset settings
 _base_ = [
     '../../../../configs/_base_/models/faster-rcnn_r50_fpn.py',
@@ -7,11 +8,19 @@ _base_ = [
     '../../../../configs/_base_/default_runtime.py'
 ]
 
+# _base_ = [
+#     'mmdet::_base_/schedules/schedule_1x.py',
+#     'mmdet::_base_/datasets/coco_detection.py',
+#     'mmdet::_base_/schedules/schedule_2x.py',
+#     'mmdet::_base_/default_runtime.py'
+# ]
 dataset_type = 'KaistRgbtCocoDataset'
 data_root = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco'
 backend_args = None
 
 classes = ('person', 'people', 'cyclist' )
+optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+
 
 model = dict(
     type = 'MultiModalFasterRCNN',
@@ -44,7 +53,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=4,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='CustomSampler', shuffle=True),
@@ -70,7 +79,7 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/test-all-01.txt.json',
-        data_prefix=dict(img='         '),
+        data_prefix=dict(img=''),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
