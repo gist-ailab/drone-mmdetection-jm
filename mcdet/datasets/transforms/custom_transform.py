@@ -27,7 +27,7 @@ from mmdet.datasets.transforms import Resize
 
 
 @TRANSFORMS.register_module()
-class FLIR_Resize(Resize):
+class RGBT_Resize(Resize):
     '''
     Custom Resize for resize both rgb and thermal image
     Required keys

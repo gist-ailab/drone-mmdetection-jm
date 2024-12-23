@@ -8,6 +8,7 @@ from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
 
 from mmdet.utils import setup_cache_size_limit_of_dynamo
+from mcdet import *
 
 
 def parse_args():

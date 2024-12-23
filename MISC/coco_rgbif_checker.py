@@ -64,7 +64,7 @@ def visualize_image_with_bbox(image_folder, annotation_path):
 
 def main():
     image_folder = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco'
-    annotation_path = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco/annotations/test-all-01.txt.json'
+    annotation_path = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco/annotations/test-day-20.txt.json'
 
     visualize_image_with_bbox(image_folder, annotation_path)
 

@@ -4,9 +4,10 @@ from .engine.runner.custom_runner import FLIR_CatRunner
 from .datasets.custom_flir_dataset import FLIRCatDataset
 from .datasets.custom_drone_Dataset import GISTDataset
 from .datasets.kaist_rgbt_coco_dataset import KaistRgbtCocoDataset
+from .datasets.llvip_dataset import LLVIPRgbtDataset
 from .datasets.transforms.custom_formatting import FLIR_CATPackDetInputs, PackMultiModalDetInputs
 from .datasets.transforms.custom_loading import LoadThermalImageFromFile, CatRGBT
-from .datasets.transforms.custom_transform import FLIR_Resize
+from .datasets.transforms.custom_transform import RGBT_Resize
 from .datasets.custom_sampler import CustomSampler
 from .models.data_preprocessors.custom_preprocessor import *
 from .models.detectors.custom_base import BaseMultiModalDetector
@@ -18,7 +19,7 @@ from .models.attention.custom_attention import *
 from .models.layers.custom_res_layer import *
 __all__ = [
     'KaistRgbtCocoDataset','GISTDataset', 'FLIRCatDataset','FLIR_CatRunner', 'FLIR_CATPackDetInputs', 'LoadThermalImageFromFile','CatRGBT',\
-    'FLIR_Resize','CustomSampler', 'PackMultiModalDetInputs', 'MultiModalDetDataPreprocessor',\
+    'RGBT_Resize','CustomSampler', 'PackMultiModalDetInputs', 'MultiModalDetDataPreprocessor',\
     'BaseMultiModalDetector','MultiModalFasterRCNN', 'inference_rgbt_detector', \
     'MultiModalAttFasterRCNN', 'CBAM', 'SELayer', 'SpatialATT', 'ATTResNet','Custom_ResLayer'
     ]
