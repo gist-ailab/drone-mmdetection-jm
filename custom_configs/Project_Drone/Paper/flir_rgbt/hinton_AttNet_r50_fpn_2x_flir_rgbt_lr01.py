@@ -5,11 +5,11 @@ _base_ = [
     './llvip_rgbt.py'
 ]
 
-data_root = '/SSDb/jemo_maeng/dset/data/LLVIP_coco'
+data_root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco'
 
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001))
+    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
 
 model = dict(
     type = 'MultiModalFasterRCNN',
@@ -25,3 +25,22 @@ model = dict(
         )
     )
 )
+
+
+train_dataloader = dict(
+    dataset=dict(
+        data_root = data_root,
+    )
+)
+
+val_dataloader = dict(
+    dataset=dict(
+        data_root = data_root,
+    )
+)
+
+val_evaluator = dict(
+    type='CocoMetric',
+    ann_file=os.path.join(data_root,'coco_annotations','val.json'),
+)
+test_evaluator = val_evaluator

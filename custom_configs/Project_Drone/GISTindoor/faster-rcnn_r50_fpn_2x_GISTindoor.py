@@ -35,7 +35,7 @@ train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(type='Resize', scale=(480, 640), keep_ratio=True),
-    # dict(type='FLIR_Resize', scale=(1333, 800), keep_ratio=True),
+    # dict(type='RGBT_Resize', scale=(1333, 800), keep_ratio=True),
     dict(type='PackDetInputs'),
 ]
 test_pipeline = [
