@@ -31,15 +31,8 @@ class FLIRRgbtCocoDataset(CocoDataset):
     #     return data_list
     
 
-    def parse_data_info(self, raw_data_info: dict) -> Union[dict, List[dict]]:
-        """Parse raw annotation to target format.
+    def parse_data_info(self, raw_data_info: dict):
 
-        Args:
-            raw_data_info (dict): Raw data information load from ``ann_file``
-
-        Returns:
-            Union[dict, List[dict]]: Parsed annotation.
-        """
         img_info = raw_data_info['raw_img_info']
         ann_info = raw_data_info['raw_ann_info']
 

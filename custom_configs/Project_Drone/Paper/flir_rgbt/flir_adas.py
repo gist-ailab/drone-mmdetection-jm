@@ -1,4 +1,5 @@
 # base config for custom FLIR ADAS v2
+import os
 _base_ = [
     '../../../../configs/_base_/models/faster-rcnn_r50_fpn.py',
     '../../../../configs/_base_/datasets/coco_detection.py',
@@ -7,10 +8,10 @@ _base_ = [
 ]
 
 
-dataset_type = 'LLVIPRgbtDataset'
+dataset_type = 'FLIRRgbtCocoDataset'
 backend_args = None
 data_root = '/media/ailab/HDD1/Workspace/dset/Drone-Detection-Benchmark/LLVIP_coco'
-classes = ('person')
+classes = ('bicycle', 'car', 'person', 'dog')
 
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),

@@ -9,7 +9,7 @@ data_root = '/SSDb/jemo_maeng/dset/data/LLVIP_coco'
 
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='SGD', lr=0.05, momentum=0.9, weight_decay=0.0001))
+    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
 
 model = dict(
     type = 'MultiModalFasterRCNN',

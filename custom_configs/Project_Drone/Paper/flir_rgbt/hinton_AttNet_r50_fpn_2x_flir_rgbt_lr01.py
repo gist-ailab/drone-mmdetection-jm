@@ -2,7 +2,7 @@
 # /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
 import os
 _base_ = [
-    './llvip_rgbt.py'
+    './flir_adas.py'
 ]
 
 data_root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco'
