@@ -8,12 +8,7 @@ _base_ = [
     '../../../../configs/_base_/default_runtime.py'
 ]
 
-# _base_ = [
-#     'mmdet::_base_/schedules/schedule_1x.py',
-#     'mmdet::_base_/datasets/coco_detection.py',
-#     'mmdet::_base_/schedules/schedule_2x.py',
-#     'mmdet::_base_/default_runtime.py'
-# ]
+
 dataset_type = 'KaistRgbtCocoDataset'
 data_root = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco'
 backend_args = None
