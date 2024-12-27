@@ -17,12 +17,15 @@ train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RGBT_Resize', scale=(640, 512), keep_ratio=True),
+
     dict(type='PackMultiModalDetInputs'),
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RGBT_Resize', scale=(640, 512), keep_ratio=True),
     dict(type='PackMultiModalDetInputs'),
 ]
 

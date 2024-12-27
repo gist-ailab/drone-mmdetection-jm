@@ -1,15 +1,15 @@
 
-# /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
+# /drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
 import os
 _base_ = [
-    './llvip_rgbt.py'
+    './flir_adas.py'
 ]
 
-data_root = '/SSDb/jemo_maeng/dset/data/LLVIP_coco'
+data_root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco'
 
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='SGD', lr=0.05, momentum=0.9, weight_decay=0.0001))
+    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
 
 model = dict(
     type = 'MultiModalFasterRCNN',
@@ -17,11 +17,12 @@ model = dict(
         type='MultiModalDetDataPreprocessor',
     ),
     backbone=dict(
-        in_channels=6
+        in_channels=6,
+        frozen_stages=3
     ),
     roi_head=dict(
         bbox_head=dict(
-            num_classes=1
+            num_classes=4
         )
     )
 )
@@ -40,8 +41,7 @@ val_dataloader = dict(
 )
 
 val_evaluator = dict(
-    type='CocoMetric',
-    ann_file=os.path.join(data_root,'coco_annotations','val.json'),
+    ann_file = os.path.join(data_root,'annotations','val.json'),
 )
 test_dataloader = val_dataloader
 test_evaluator = val_evaluator

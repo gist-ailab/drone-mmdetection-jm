@@ -1,5 +1,5 @@
 
-# /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
+# /drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
 import os
 _base_ = [
     './flir_adas.py'
@@ -21,7 +21,7 @@ model = dict(
     ),
     roi_head=dict(
         bbox_head=dict(
-            num_classes=1
+            num_classes=4
         )
     )
 )
@@ -40,7 +40,7 @@ val_dataloader = dict(
 )
 
 val_evaluator = dict(
-    type='CocoMetric',
-    ann_file=os.path.join(data_root,'coco_annotations','val.json'),
+    ann_file = os.path.join(data_root,'annotations','val.json'),
 )
+test_dataloader = val_dataloader
 test_evaluator = val_evaluator

@@ -1,4 +1,5 @@
 # base config for custom FLIR ADAS v2
+# drone-mmdetection-jm/custom_configs/Project_Drone/Paper/flir_rgbt/flir_adas.py
 import os
 _base_ = [
     '../../../../configs/_base_/models/faster-rcnn_r50_fpn.py',
@@ -17,12 +18,14 @@ train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RGBT_Resize', scale=(640, 512), keep_ratio=True),
     dict(type='PackMultiModalDetInputs'),
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RGBT_Resize', scale=(640, 512), keep_ratio=True),
     dict(type='PackMultiModalDetInputs'),
 ]
 
