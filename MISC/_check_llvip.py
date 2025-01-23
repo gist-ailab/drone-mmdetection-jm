@@ -4,28 +4,9 @@ from pycocotools.coco import COCO
 import cv2
 import os
 import numpy as np
-
 from check_flir import get_category_names, draw_bbox
+
 COLOR_PALETTE = np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [255, 0, 255], [0, 255, 255], [255, 255, 255]])
-
-# def get_category_names(coco):
-#     """Get category names from COCO annotation file"""
-#     cats = coco.loadCats(coco.getCatIds())
-#     return {cat['id']: cat['name'] for cat in cats}
-
-# def draw_bbox(image, bbox, category_id, color, category_names):
-#     x, y, w, h = [int(b) for b in bbox]
-#     cv2.rectangle(image, (x, y), (x+w, y+h), color.tolist(), 2)
-#     # Add category label with name
-#     label = f"{category_names.get(category_id, f'unknown-{category_id}')}"
-#     # Get text size for better positioning
-#     (text_width, text_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-#     # Draw background rectangle for text
-#     cv2.rectangle(image, (x, y-text_height-baseline-5), (x+text_width, y), color.tolist(), -1)
-#     # Draw text
-#     cv2.putText(image, label, (x, y-baseline-3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-#     return image
-
 
 def visualize(coco_path, root, flag):
     if flag == 'val':

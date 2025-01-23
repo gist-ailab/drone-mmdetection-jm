@@ -5,41 +5,6 @@ import json
 import numpy as np
 from pycocotools.coco import COCO
 
-# Path to the KAIST dataset
-# pth = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/data_preparation/KAIST/dataset/kaist-paired'
-
-# train_split = os.path.join(pth, 'splits', 'trainval.txt')
-# test_split = os.path.join(pth, 'splits', 'test.txt')
-
-# ann_root = os.path.join(pth, 'annotations')
-# # %%
-# train_indices = np.loadtxt(train_split, dtype=str)
-# # %%
-
-# categories = []
-# #%%
-# def parse_annotation(ann_file):
-#     annotations = []
-#     with open(ann_file, 'r') as f:
-#         lines =f.readlines()
-#         for line in lines[1:]:
-#             parts = line.strip().split(' ')
-#             ann={
-#                 'category': parts[0],
-#                 'bbox' : [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])],
-#             }
-#             annotations.append(ann)
-#     return annotations
-    
-
-# def get_ann_info(sub_pth):
-#     sub_list = sub_pth.split('/')
-#     ann_file_visible = glob.glob(os.path.join(ann_root,sub_list[0], sub_list[1], 'visible' , sub_list[2]+'*'))[0]
-#     ann_file_lwir = glob.glob(os.path.join(ann_root,sub_list[0], sub_list[1], 'lwir' , sub_list[2]+'*'))[0]
-#     ann_data = parse_annotation(ann_file_visible)
-#     return ann_data
-
-
 # %%
 from datetime import datetime
 import glob
@@ -150,5 +115,10 @@ class KAIST2COCO:
 
 
 
-converter = KAIST2COCO('/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/data_preparation/KAIST/dataset/kaist-paired', 'train')
-converter.process()
+def main():
+    converter = KAIST2COCO('/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/data_preparation/KAIST/dataset/kaist-paired', 'train')
+    converter.process()
+
+
+if __name__ == '__main__':
+    main()
