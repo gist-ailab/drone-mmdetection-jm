@@ -19,7 +19,6 @@ class MultiModalTwoStageDetector(BaseMultiModalDetector):
     Two-stage detectors typically consisting of a region proposal network and a
     task-specific regression head.
     """
-
     def __init__(self,
                  backbone: ConfigType,
                  neck: OptConfigType = None,
@@ -32,7 +31,7 @@ class MultiModalTwoStageDetector(BaseMultiModalDetector):
         super().__init__(
             data_preprocessor=data_preprocessor, init_cfg=init_cfg)
         self.backbone = MODELS.build(backbone)
-
+        
         if neck is not None:
             self.neck = MODELS.build(neck)
 

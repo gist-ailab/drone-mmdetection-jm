@@ -13,7 +13,7 @@ from mcdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/flir_rgbt/hinton_AttNet_r50_fpn_2x_flir_rgbt_lr01.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/Flir_adas_old/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v3-preSpatialpostSE_LR0.005_benchmark_origin.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',

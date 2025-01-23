@@ -17,8 +17,11 @@ model = dict(
         type='MultiModalDetDataPreprocessor',
     ),
     backbone=dict(
-        in_channels=6,
-        frozen_stages=3
+        type='ResNet',  # Specify backbone type if not done already
+        depth=50,       # Example for ResNet-50
+        in_channels=6,  # Set input channels to 6
+        frozen_stages=3,  # Freeze stages up to the third
+        norm_eval=True,   # Freeze BatchNorm statistics for frozen layers
     ),
     roi_head=dict(
         bbox_head=dict(
@@ -26,8 +29,6 @@ model = dict(
         )
     )
 )
-
-
 train_dataloader = dict(
     dataset=dict(
         data_root = data_root,

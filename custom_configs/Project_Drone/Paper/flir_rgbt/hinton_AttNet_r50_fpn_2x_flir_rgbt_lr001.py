@@ -6,26 +6,39 @@ _base_ = [
 ]
 
 data_root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco'
+classes = ('bicycle', 'car', 'person', 'dog')
 
 optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001))
 
 model = dict(
-    type = 'MultiModalFasterRCNN',
+    type = 'MultiModalAttFasterRCNN',
     data_preprocessor=dict(
         type='MultiModalDetDataPreprocessor',
     ),
     backbone=dict(
-        in_channels=6
+        in_channels=3
+    ),
+    neck = dict(
+        in_channels=[
+            256,512,1024,2048,
+        ],
+        out_channels = 128
+    ),
+    post_att = dict(
+        type = 'SELayer',
+        in_channels = 256
+    ),
+    att = dict(
+        type = 'SpatialATT'
     ),
     roi_head=dict(
         bbox_head=dict(
-            num_classes=4
+            num_classes=len(classes)
         )
-    )
+    ),
 )
-
 
 train_dataloader = dict(
     dataset=dict(

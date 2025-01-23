@@ -1,12 +1,13 @@
 
-# /drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
+# /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/llvip_rgbt/AttNet_r50_fpn_2x_llvip_rgbt_lr005.py
 import os
 _base_ = [
-    './flir_adas.py'
+    './llvip_rgbt.py'
 ]
 
-data_root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco'
-classes = ('bicycle', 'car', 'person', 'dog')
+
+data_root = '/SSDb/jemo_maeng/dset/data/LLVIP_coco'
+classes = ('person')
 
 optim_wrapper = dict(
     type='AmpOptimWrapper',
@@ -20,18 +21,18 @@ model = dict(
     backbone=dict(
         in_channels=3
     ),
-    neck = dict(
+    neck=dict(
         in_channels=[
-            256,512,1024,2048,
+            256, 512, 1024, 2048,
         ],
-        out_channels = 128
+        out_channels=128
+    ),
+    att =dict(
+        type='SELayer',
+        in_channels=128
     ),
     post_att = dict(
-        type = 'SELayer',
-        in_channels = 256
-    ),
-    att = dict(
-        type = 'SpatialATT'
+        type='SpatialATT'
     ),
     roi_head=dict(
         bbox_head=dict(
@@ -41,6 +42,8 @@ model = dict(
 )
 
 train_dataloader = dict(
+    batch_size =16,
+    num_workers =4,
     dataset=dict(
         data_root = data_root,
     )
@@ -53,7 +56,9 @@ val_dataloader = dict(
 )
 
 val_evaluator = dict(
-    ann_file = os.path.join(data_root,'annotations','val.json'),
+    type='CocoMetric',
+    ann_file=os.path.join(data_root,'coco_annotations','val.json'),
 )
+
 test_dataloader = val_dataloader
 test_evaluator = val_evaluator

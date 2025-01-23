@@ -15,7 +15,7 @@ _base_ = [
 #     'mmdet::_base_/default_runtime.py'
 # ]
 dataset_type = 'KaistRgbtCocoDataset'
-data_root = '/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/SOTA/CAFF-DETR/CAFF-DINO/data/kaist_coco'
+data_root = '/SSDb/jemo_maeng/dset/data/kaist_coco'
 backend_args = None
 
 classes = ('person', 'people', 'cyclist' )
@@ -66,7 +66,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=4,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='CustomSampler', shuffle=True),
@@ -77,7 +77,7 @@ train_dataloader = dict(
         data_root = data_root,
         ann_file = 'annotations/train-day-04.txt.json',
         data_prefix=dict(img=''),
-        filter_cfg=dict(filter_empty_gt=True, min_size=32),
+        # filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
         backend_args=backend_args))
 

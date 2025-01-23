@@ -68,7 +68,6 @@ class KaistRgbtCocoDataset(CocoDataset):
         # serialize data_list
         if self.serialize_data:
             self.data_bytes, self.data_address = self._serialize_data()
-
         self._fully_initialized = True
 
 
@@ -151,7 +150,6 @@ class KaistRgbtCocoDataset(CocoDataset):
 
 
     
-
     def __getitem__(self, idx: int) -> dict:
         """Get the idx-th image and data information of dataset after
         ``self.pipeline``, and ``full_init`` will be called if the dataset has
@@ -168,7 +166,13 @@ class KaistRgbtCocoDataset(CocoDataset):
             dict: The idx-th image and data information of dataset after
             ``self.pipeline``.
         """
-
+        # Performing full initialization by calling `__getitem__` will consume
+        # extra memory. If a dataset is not fully initialized by setting
+        # `lazy_init=True` and then fed into the dataloader. Different workers
+        # will simultaneously read and parse the annotation. It will cost more
+        # time and memory, although this may work. Therefore, it is recommended
+        # to manually call `full_init` before dataset fed into dataloader to
+        # ensure all workers use shared RAM from master process.
         if not self._fully_initialized:
             print_log(
                 'Please call `full_init()` method manually to accelerate '

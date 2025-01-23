@@ -14,7 +14,6 @@ from mmdet.utils import MultiConfig, OptConfigType, OptMultiConfig
 @MODELS.register_module()
 class SELayer(BaseModule):
     """Squeeze-and-Excitation Module.
-
     Args:
         channels (int): The input (and output) channels of the SE layer.
         ratio (int): Squeeze ratio in SELayer, the intermediate channel will be

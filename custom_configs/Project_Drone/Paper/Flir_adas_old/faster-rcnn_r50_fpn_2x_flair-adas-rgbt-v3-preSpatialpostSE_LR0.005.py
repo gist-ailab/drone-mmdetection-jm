@@ -1,10 +1,10 @@
 import os
 # dataset settings
 _base_ = [
-    '../_base_/models/faster-rcnn_r50_fpn.py',
-    '../_base_/datasets/coco_detection.py',
-    '../_base_/schedules/schedule_2x.py',
-    '../_base_/default_runtime.py'
+    '../../../../configs/_base_/models/faster-rcnn_r50_fpn.py',
+    '../../../../configs/_base_/datasets/coco_detection.py',
+    '../../../../configs/_base_/schedules/schedule_2x.py',
+    '../../../../configs/_base_/default_runtime.py'
 ]
 
 dataset_type = 'FLIRCatDataset'

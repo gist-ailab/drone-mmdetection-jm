@@ -26,7 +26,6 @@ model = dict(
     )
 )
 
-
 train_dataloader = dict(
     dataset=dict(
         data_root = data_root,
