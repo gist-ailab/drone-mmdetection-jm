@@ -117,6 +117,14 @@ def main():
     # start training
     runner.train()
 
+    try:
+        log_file = os.path.join(cfg.work_dir, f'{runner.timestamp}.log')
+        if os.papth.exists(log_file):
+            from MISC._vislog import make_plot
+            make_plot(log_file)
+            print(f"The log file visualization saved at {log_file}.png")
+    except Exception as e:
+        print("The log file visualization is failed.")
 
 if __name__ == '__main__':
     main()
