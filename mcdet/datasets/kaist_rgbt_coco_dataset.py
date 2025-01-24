@@ -22,53 +22,6 @@ from typing import List, Union, Any
 @DATASETS.register_module()
 class KaistRgbtCocoDataset(CocoDataset):
 
-    def __init__(self, *args, test_ratio=0.1, **kwargs):
-        super(CocoDataset, self).__init__(*args, **kwargs)
-
-
-    def full_init(self) -> None:
-        """Load annotation file and set ``BaseDataset._fully_initialized`` to
-        True.
-
-        If ``lazy_init=False``, ``full_init`` will be called during the
-        instantiation and ``self._fully_initialized`` will be set to True. If
-        ``obj._fully_initialized=False``, the class method decorated by
-        ``force_full_init`` will call ``full_init`` automatically.
-
-        Several steps to initialize annotation:
-
-            - load_data_list: Load annotations from annotation file.
-            - load_proposals: Load proposals from proposal file, if
-              `self.proposal_file` is not None.
-            - filter data information: Filter annotations according to
-              filter_cfg.
-            - slice_data: Slice dataset according to ``self._indices``
-            - serialize_data: Serialize ``self.data_list`` if
-            ``self.serialize_data`` is True.
-        """
-        if self._fully_initialized:
-            return
-        # load data information
-        # self.rgb2thermal = json.load(open(os.path.join(os.path.dirname(self.data_root), 'rgb_to_thermal_vid_map.json')))
-        self.data_list = self.load_data_list()
-
-        print("[Loader info] datalist is loaded  : {}".format(len(self.data_list)))
-        
-        # get proposals from file
-        if self.proposal_file is not None:
-            self.load_proposals()
-        # filter illegal data, such as data that has no annotations.
-        self.data_list = self.filter_data()
-        print('[Dataset info]: num_data = {}'.format(len(self.data_list)))
-
-        # Get subset data according to indices.
-        if self._indices is not None:
-            self.data_list = self._get_unserialized_subset(self._indices)
-
-        # serialize data_list
-        if self.serialize_data:
-            self.data_bytes, self.data_address = self._serialize_data()
-        self._fully_initialized = True
 
 
     def parse_data_info(self, raw_data_info: dict) -> Union[dict, List[dict]]:
@@ -84,7 +37,7 @@ class KaistRgbtCocoDataset(CocoDataset):
         ann_info = raw_data_info['raw_ann_info']
 
         data_info = {}
-        img_path = osp.join(self.data_prefix['img'], img_info['file_name_RGB'])
+        img_path = osp.join(self.data_prefix['img'], img_info['file_name'])
         if self.data_prefix.get('seg', None):
             seg_map_path = osp.join(
                 self.data_prefix['seg'],
@@ -93,7 +46,7 @@ class KaistRgbtCocoDataset(CocoDataset):
             seg_map_path = None
         data_info['img_path'] = img_path
         img_name = os.path.basename(img_info['file_name_RGB'])
-        data_info['thermal_img_path'] =osp.join(self.data_prefix['img'], img_info['file_name_IR'])
+        data_info['thermal_img_path']= img_path.replace('visible', 'lwir')
         data_info['img_id'] = img_info['img_id']
         data_info['seg_map_path'] = seg_map_path
         data_info['height'] = img_info['height']
@@ -134,19 +87,6 @@ class KaistRgbtCocoDataset(CocoDataset):
             instances.append(instance)
         data_info['instances'] = instances
         return data_info
-
-
-    def prepare_data(self, idx) -> Any:
-        """Get data processed by ``self.pipeline``.
-
-        Args:
-            idx (int): The index of ``data_info``.
-
-        Returns:
-            Any: Depends on ``self.pipeline``.
-        """
-        data_info = self.get_data_info(idx)
-        return self.pipeline(data_info)
 
 
     
