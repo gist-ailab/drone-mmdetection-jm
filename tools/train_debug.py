@@ -14,7 +14,7 @@ from mcdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/datav2/debug_hinton_FasterRCNN_r50_fpn_2x_datav2_flir_adas_rgb_lr001.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/datav2/llvip/lecun_deformable-detr_r50_16xb2-50e_llvip_rgbt.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',

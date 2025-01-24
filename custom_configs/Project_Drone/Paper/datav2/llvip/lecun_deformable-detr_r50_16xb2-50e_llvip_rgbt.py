@@ -1,11 +1,16 @@
+#/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/datav2/llvip/lecun_deformable-detr_r50_16xb2-50e_llvip_rgbt.py
+
 import os
 
 _base_ = [
-    '../../../../../configs/datasets/coco_detection.py', '../_base_/default_runtime.py'
+    '../../../../../configs/_base_/datasets/coco_detection.py', 
+    '../../../../../configs/_base_/default_runtime.py'
 ]
 
 classes = ('person')
 data_root = '/SSDb/jemo_maeng/dset/data/DroneDataV2/LLVIP'
+
+dataset_type = 'CocoDataset'
 
 model = dict(
     type='DeformableDETR',
@@ -123,28 +128,50 @@ train_pipeline = [
         ]),
     dict(type='PackDetInputs')
 ]
+
+
+test_pipeline = [
+    dict(type='LoadImageFromFile', backend_args={{_base_.backend_args}}),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', scale = (1333, 800), keep_ratio = True),
+    dict(type='PackDetInputs')
+]
+
 train_dataloader = dict(
+    batch_size=2,
+    num_workers=2,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=True),
+    batch_sampler=dict(type='AspectRatioBatchSampler'),
     dataset=dict(
-        filter_cfg=dict(filter_empty_gt=False), pipeline=train_pipeline),
-        meta_info = dict(classes=classes),
-        # type = 'dataset_type'
-        data_root = data_root,
-        ann_file = 'coco_annotations/train.json',
-        data_prefix =dict(img ='visible/train'),
+        type=dataset_type,  # Should be 'CocoDataset'
+        metainfo=dict(classes=classes),
+        data_root=data_root,
+        ann_file='coco_annotations/train.json',
+        data_prefix=dict(img='visible/train'),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
-        )
+        pipeline=train_pipeline,
+        backend_args=None
+    )
+)
 
 val_dataloader = dict(
     batch_size=1,
     num_workers=2,
-    dataset = dict(
-        meta_info = dict(classes = classes),
-        data_root = data_root,
-        ann_file = 'coco_annotations/val.json',
-        data_prefix = dict(img = 'visible/test'),
+    persistent_workers=True,
+    drop_last=False,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        metainfo=dict(classes=classes),
+        data_root=data_root,
+        ann_file='coco_annotations/val.json',
+        data_prefix=dict(img='visible/test'),
+        test_mode=True,
+        pipeline=test_pipeline,  # Make sure to define test_pipeline
+        backend_args=None
     )
 )
-
 
 # optimizer
 optim_wrapper = dict(
