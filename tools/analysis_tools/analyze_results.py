@@ -3,6 +3,7 @@ import argparse
 import os.path as osp
 from multiprocessing import Pool
 
+import mcdet
 import mmcv
 import numpy as np
 from mmengine.config import Config, DictAction

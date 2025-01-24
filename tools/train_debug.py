@@ -11,9 +11,10 @@ from mmdet.utils import setup_cache_size_limit_of_dynamo
 from mcdet import *
 
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/Flir_adas_old/faster-rcnn_r50_fpn_2x_flair-adas-rgbt-v3-preSpatialpostSE_LR0.005_benchmark_origin.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/datav2/debug_hinton_FasterRCNN_r50_fpn_2x_datav2_flir_adas_rgb_lr001.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
@@ -118,8 +119,8 @@ def main():
     runner.train()
 
     try:
-        log_file = os.path.join(cfg.work_dir, f'{runner.timestamp}.log')
-        if os.papth.exists(log_file):
+        log_file = os.path.join(cfg.work_dir, runner.timestamp, f'{runner.timestamp}.log')
+        if os.path.exists(log_file):
             from MISC._vislog import make_plot
             make_plot(log_file)
             print(f"The log file visualization saved at {log_file}.png")

@@ -2,6 +2,8 @@
 import argparse
 import os.path as osp
 
+import sys
+
 from mmengine.config import Config, DictAction
 from mmengine.registry import init_default_scope
 from mmengine.utils import ProgressBar
@@ -9,14 +11,18 @@ from mmengine.utils import ProgressBar
 from mmdet.models.utils import mask2ndarray
 from mmdet.registry import DATASETS, VISUALIZERS
 from mmdet.structures.bbox import BaseBoxes
+sys.path.append('/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm')
+import mcdet
+
+
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Browse a dataset')
-    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--config', default = '/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Project_Drone/Paper/datav2/hinton_ATTNet_r50_fpn_2x_datav2_flir_adas_rgbt.py', help='train config file path')
     parser.add_argument(
         '--output-dir',
-        default=None,
+        default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/_temp',
         type=str,
         help='If there is no display interface, you can save it')
     parser.add_argument('--not-show', default=False, action='store_true')
@@ -54,6 +60,8 @@ def main():
 
     progress_bar = ProgressBar(len(dataset))
     for item in dataset:
+        if 'inputs_rgb' in item:
+            item['inputs'] = item['inputs_rgb']
         img = item['inputs'].permute(1, 2, 0).numpy()
         data_sample = item['data_samples'].numpy()
         gt_instances = data_sample.gt_instances
