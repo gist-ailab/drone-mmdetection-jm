@@ -45,7 +45,6 @@ class KaistRgbtCocoDataset(CocoDataset):
         else:
             seg_map_path = None
         data_info['img_path'] = img_path
-        img_name = os.path.basename(img_info['file_name_RGB'])
         data_info['thermal_img_path']= img_path.replace('visible', 'lwir')
         data_info['img_id'] = img_info['img_id']
         data_info['seg_map_path'] = seg_map_path

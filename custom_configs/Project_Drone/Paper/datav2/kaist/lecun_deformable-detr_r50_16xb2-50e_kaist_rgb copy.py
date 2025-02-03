@@ -3,23 +3,19 @@
 import os
 
 _base_ = [
-    '../../../../../configs/_base_/datasets/coco_detection.py', 
-    '../../../../../configs/_base_/default_runtime.py'
+    # '../../../../../configs/_base_/datasets/coco_detection.py', 
+    # '../../../../../configs/_base_/default_runtime.py',
+    './kaist.py'
 ]
 
-classes = ('person')
-data_root = '/SSDb/jemo_maeng/dset/data/DroneDataV2/LLVIP'
-
+classes = _base_.classes
 dataset_type = 'CocoDataset'
-
 model = dict(
     type='DeformableDETR',
     num_queries=300,
     num_feature_levels=4,
-    # with_box_refine=False,
-    # as_two_stage=False,
-    with_box_refine=True,
-    as_two_stage=True,
+    with_box_refine=False,
+    as_two_stage=False,
     data_preprocessor=dict(
         type='DetDataPreprocessor',
         mean=[123.675, 116.28, 103.53],
@@ -32,10 +28,8 @@ model = dict(
         num_stages=4,
         out_indices=(1, 2, 3),
         frozen_stages=1,
-        # norm_cfg=dict(type='BN', requires_grad=False),
-        norm_cfg=dict(type='BN', requires_grad=True), 
-        # norm_eval=True,
-        norm_eval=False,
+        norm_cfg=dict(type='BN', requires_grad=False),
+        norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
@@ -78,8 +72,7 @@ model = dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
-            # alpha=0.25,
-            alpha=0.5,
+            alpha=0.25,
             loss_weight=2.0),
         loss_bbox=dict(type='L1Loss', loss_weight=5.0),
         loss_iou=dict(type='GIoULoss', loss_weight=2.0)),
@@ -106,23 +99,28 @@ train_pipeline = [
             [
                 dict(
                     type='RandomChoiceResize',
-                    scales=[(640, 800), (768, 960), (896, 1120), (1024, 1280),
-                            (1152, 1440), (1280, 1600)],
+                    scales=[(480, 1333), (512, 1333), (544, 1333), (576, 1333),
+                            (608, 1333), (640, 1333), (672, 1333), (704, 1333),
+                            (736, 1333), (768, 1333), (800, 1333)],
                     keep_ratio=True)
             ],
             [
                 dict(
                     type='RandomChoiceResize',
-                    scales=[(640, 800), (768, 960), (896, 1120)],
+                    # The radio of all image in train dataset < 7
+                    # follow the original implement
+                    scales=[(400, 4200), (500, 4200), (600, 4200)],
                     keep_ratio=True),
                 dict(
                     type='RandomCrop',
                     crop_type='absolute_range',
-                    crop_size=(512, 640),  # Crop maintaining the aspect ratio
+                    crop_size=(384, 600),
                     allow_negative_crop=True),
                 dict(
                     type='RandomChoiceResize',
-                    scales=[(640, 800), (768, 960), (896, 1120)],
+                    scales=[(480, 1333), (512, 1333), (544, 1333), (576, 1333),
+                            (608, 1333), (640, 1333), (672, 1333), (704, 1333),
+                            (736, 1333), (768, 1333), (800, 1333)],
                     keep_ratio=True)
             ]
         ]),
@@ -131,9 +129,9 @@ train_pipeline = [
 
 
 test_pipeline = [
-    dict(type='LoadImageFromFile', backend_args={{_base_.backend_args}}),
+    dict(type='LoadImageFromFile', backend_args=_base_.backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', scale=(1280, 1024), keep_ratio=False),  # No distortion
+    dict(type='Resize', scale = (800, 1333), keep_ratio = True),
     dict(type='PackDetInputs')
 ]
 
@@ -144,46 +142,23 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     batch_sampler=dict(type='AspectRatioBatchSampler'),
     dataset=dict(
-        type=dataset_type,  # Should be 'CocoDataset'
-        metainfo=dict(classes=classes),
-        data_root=data_root,
-        ann_file='coco_annotations/train.json',
-        data_prefix=dict(img='visible/train'),
-        filter_cfg=dict(filter_empty_gt=True, min_size=32),
+        data_root = _base_.data_root,
         pipeline=train_pipeline,
-        backend_args=None
-    )
-)
+        filter_cfg = dict(filter_empty_gt = True),  # 빈 GT 필터링 추가
+        backend_args=_base_.backend_args))
 
 val_dataloader = dict(
     batch_size=1,
     num_workers=2,
     persistent_workers=True,
     drop_last=False,
-    sampler=dict(type='DefaultSampler', shuffle=False),
-    dataset=dict(
-        type=dataset_type,
-        metainfo=dict(classes=classes),
-        data_root=data_root,
-        ann_file='coco_annotations/val.json',
-        data_prefix=dict(img='visible/test'),
-        test_mode=True,
-        pipeline=test_pipeline,  # Make sure to define test_pipeline
-        backend_args=None
-    )
-)
+    dataset = dict(
+        filter_cfg = dict(filter_empty_gt = True),  # 빈 GT 필터링 추가
+    ),
+    sampler=dict(type='DefaultSampler', shuffle=False))
 
-# optimizer
-optim_wrapper = dict(
-    type='OptimWrapper',
-    optimizer=dict(type='AdamW', lr=0.0002, weight_decay=0.0001),
-    clip_grad=dict(max_norm=0.1, norm_type=2),
-    paramwise_cfg=dict(
-        custom_keys={
-            'backbone': dict(lr_mult=0.1),
-            'sampling_offsets': dict(lr_mult=0.1),
-            'reference_points': dict(lr_mult=0.1)
-        }))
+
+
 
 # learning policy
 max_epochs = 50
@@ -205,12 +180,12 @@ param_scheduler = [
 # NOTE: `auto_scale_lr` is for automatically scaling LR,
 # USER SHOULD NOT CHANGE ITS VALUES.
 # base_batch_size = (16 GPUs) x (2 samples per GPU)
-auto_scale_lr = dict(base_batch_size=16)
+auto_scale_lr = dict(base_batch_size=2)
 
 test_dataloader = val_dataloader
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root,'coco_annotations','val.json'),
+    ann_file=os.path.join(_base_.data_root,'coco_annotations','coco_test.json'),
     metric='bbox',
     )
 test_evaluator = val_evaluator
