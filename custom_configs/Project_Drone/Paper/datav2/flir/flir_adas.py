@@ -41,7 +41,7 @@ train_dataloader = dict(
         data_root = data_root,
         ann_file = 'annotations/train.json',
         # data_prefix=dict(img=''),
-        data_prefix=dict(visible='train_RGB', infrared='train_thermal'),
+        data_prefix=dict(img='train_RGB'),
         # filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
         backend_args=backend_args))
@@ -58,7 +58,7 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file='annotations/val.json',
         # data_prefix=dict(img=''),
-        data_prefix=dict(visible='val_RGB', infrared='val_thermal'),
+        data_prefix=dict(visible='val_RGB'),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))

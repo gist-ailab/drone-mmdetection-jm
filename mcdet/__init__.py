@@ -14,14 +14,16 @@ from .models.data_preprocessors.custom_preprocessor import *
 from .models.detectors.custom_base import BaseMultiModalDetector
 from .models.detectors.custom_faster_rcnn import MultiModalFasterRCNN, MultiModalAttFasterRCNN, MultiModalAttDetector
 from .models.detectors.custom_two_stage import MultiModalAttDetector
+from .evaluation.metrics.miss_rate import RGBTEvaluator
 
 from .models.backbones.custom_resnet import ATTResNet
 from .models.attention.custom_attention import *
 from .models.layers.custom_res_layer import *
+
 __all__ = [
     'KaistRgbtCocoDataset','GISTDataset', 'FLIRCatDataset','FLIR_CatRunner', 'FLIR_CATPackDetInputs', 'LoadThermalImageFromFile','CatRGBT',\
     'RGBT_Resize','CustomSampler', 'PackMultiModalDetInputs', 'MultiModalDetDataPreprocessor',\
     'BaseMultiModalDetector','MultiModalFasterRCNN', 'inference_rgbt_detector', \
     'MultiModalAttFasterRCNN', 'CBAM', 'SELayer', 'SpatialATT', 'ATTResNet','Custom_ResLayer', 'MultiModalAttDetector', 'FLIRRgbtCocoDataset',\
-    'FLIRCatDataset2'
+    'FLIRCatDataset2', 'RGBTEvaluator'
     ]

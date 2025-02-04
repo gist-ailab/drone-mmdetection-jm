@@ -45,7 +45,7 @@ class FLIRRgbtCocoDataset(CocoDataset):
         ann_info = raw_data_info['raw_ann_info']
 
         data_info = {}
-        img_path = osp.join(self.data_prefix['visible'], img_info['file_name_RGB'])
+        img_path = osp.join(self.data_prefix['img'], img_info['file_name_RGB'])
         if self.data_prefix.get('seg', None):
             seg_map_path = osp.join(
                 self.data_prefix['seg'],
@@ -53,7 +53,7 @@ class FLIRRgbtCocoDataset(CocoDataset):
         else:
             seg_map_path = None
         data_info['img_path'] = img_path
-        img_name = os.path.basename(img_info['file_name_RGB'])
+        # img_name = os.path.basename(img_info['file_name_RGB'])
         data_info['thermal_img_path'] =osp.join(self.data_prefix['infrared'], img_info['file_name_IR'])
         data_info['img_id'] = img_info['img_id']
         data_info['seg_map_path'] = seg_map_path

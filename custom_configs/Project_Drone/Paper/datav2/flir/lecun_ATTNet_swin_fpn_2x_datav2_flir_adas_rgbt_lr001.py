@@ -65,6 +65,7 @@ model = dict(
 )
 
 
+
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
@@ -81,7 +82,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=1,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -91,7 +92,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root = data_root,
         ann_file = 'annotations/train.json',
-        data_prefix=dict(visible='train_RGB', infrared='train_thermal'),
+        data_prefix=dict(img='train_RGB', infrared='train_thermal'),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
         backend_args=backend_args))
@@ -107,7 +108,7 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/val.json',
-        data_prefix=dict(visible='val_RGB', infrared='val_thermal'),
+        data_prefix=dict(img='val_RGB', infrared='val_thermal'),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
