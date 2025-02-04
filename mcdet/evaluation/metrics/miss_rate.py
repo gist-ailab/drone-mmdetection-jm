@@ -30,7 +30,9 @@ class RGBTEvaluator:
         :param annotation_path: Path to the ground truth annotations in COCO format.
         """
         self.coco_gt = json.load(open(ann_file, 'r'))
-        self.image_id_map = {img['id']: img['im_name'] for img in self.coco_gt['images']}
+        # self.image_id_map = {img['id']: img['im_name'] for img in self.coco_gt['images']}
+        # self.image_id_map = {img['id']: img['im_name'] for img in self.coco_gt['images']}
+        self.image_ids = [img['id'] for img in self.coco_gt['images']]
         self.annotations = defaultdict(list)
         
         # Store ground truth annotations per image
@@ -68,13 +70,14 @@ class RGBTEvaluator:
         :param iou_threshold: IoU threshold for matching.
         :return: Dictionary containing FPPI and Miss Rate values.
         """
-        img_ids = list(self.image_id_map.keys())
-        total_images = len(img_ids)
+        # img_ids = list(self.image_id_map.keys())
+
+        total_images = len(self.img_ids)
         tp_list = []
         fp_list = []
         num_gt = 0
 
-        for img_id in img_ids:
+        for img_id in self.img_ids:
             gt_boxes = [ann["bbox"] for ann in self.annotations[img_id]]
             det_boxes = [det["bbox"] for det in results if det["image_id"] == img_id]
             det_scores = [det["score"] for det in results if det["image_id"] == img_id]
