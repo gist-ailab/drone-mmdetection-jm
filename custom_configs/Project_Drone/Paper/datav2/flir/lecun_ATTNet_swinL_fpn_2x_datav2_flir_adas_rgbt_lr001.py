@@ -8,8 +8,6 @@ _base_ = [
     '../../../../../configs/_base_/default_runtime.py'
 ]
 
-
-
 dataset_type = 'FLIRRgbtCocoDataset'
 backend_args = None
 data_root = '/SSDb/jemo_maeng/dset/data/DroneDataV2/FLIR-align'

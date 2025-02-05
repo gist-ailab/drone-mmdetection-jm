@@ -20,69 +20,92 @@ import json
 from mmdet.evaluation import CocoMetric
 from collections import defaultdict
 
-
-
 @METRICS.register_module()
-class RGBTEvaluator:
-    def __init__(self, ann_file):
+class RGBTEvaluator(BaseMetric):
+    def __init__(self, ann_file, iou_threshold=0.5):
         """
-        Initialize the evaluation object.
-        :param annotation_path: Path to the ground truth annotations in COCO format.
+        RGBT Evaluator for COCO mAP and Miss Rate (MR) computation.
+        :param ann_file: Path to the ground truth annotations in COCO format.
+        :param iou_threshold: IoU threshold for a valid match.
         """
-        self.coco_gt = json.load(open(ann_file, 'r'))
-        # self.image_id_map = {img['id']: img['im_name'] for img in self.coco_gt['images']}
-        # self.image_id_map = {img['id']: img['im_name'] for img in self.coco_gt['images']}
+        super().__init__()
+        self.ann_file = ann_file
+        self.iou_threshold = iou_threshold
+
+        # Load ground truth annotations
+        with open(self.ann_file, 'r') as f:
+            self.coco_gt = json.load(f)
+
         self.image_ids = [img['id'] for img in self.coco_gt['images']]
         self.annotations = defaultdict(list)
-        
-        # Store ground truth annotations per image
+
         for ann in self.coco_gt['annotations']:
             self.annotations[ann['image_id']].append(ann)
 
-    def evaluate(self, results):
+        # Store collected results
+        self.results = []
+
+    def process(self, data_batch, data_samples):
         """
-        Evaluate the results using both COCO mAP and Miss Rate.
-        :param results: List of detection results in format:
-                        [
-                            {"image_id": int, "bbox": [x, y, w, h], "score": float},
-                            ...
-                        ]
-        :return: Evaluation metrics dictionary
+        Process batch of data samples and store predictions.
+        :param data_batch: The input batch (not needed for evaluation).
+        :param data_samples: List of detection results.
         """
-        # Compute COCO mAP
-        coco_metric = CocoMetric(ann_file=self.coco_gt)
-        coco_results = coco_metric.evaluate(results)
+        for sample in data_samples:
+            image_id = sample["img_id"]
+            bboxes = sample["pred_instances"]["bboxes"].tolist()
+            scores = sample["pred_instances"]["scores"].tolist()
+            category_ids = sample["pred_instances"]["labels"].tolist()  # Ensure category_id is included
+
+            for bbox, score, category_id in zip(bboxes, scores, category_ids):
+                self.results.append({
+                    "image_id": image_id,
+                    "bbox": bbox,
+                    "score": score,
+                    "category_id": category_id  # Required for COCO evaluation
+                })
+
+    def compute_metrics(self, results):
+        """
+        Compute the final evaluation metrics (COCO mAP + Miss Rate).
+        :return: Dictionary with evaluation scores.
+        """
+        if len(self.results) == 0:
+            raise ValueError("No detection results were collected during evaluation!")
+
+        # Compute COCO mAP using MMDetection's built-in metric
+        coco_metric = CocoMetric(ann_file=self.ann_file)
+        coco_results = coco_metric.compute_metrics(self.results)  # Use collected results
 
         # Compute Miss Rate
-        miss_rate_metrics = self.compute_miss_rate(results)
+        miss_rate_metrics = self.compute_miss_rate(self.results)
 
         # Combine results
         evaluation_metrics = {
             "COCO_mAP": coco_results,
             "Miss_Rate": miss_rate_metrics
         }
+        
+        # Reset results after evaluation to avoid memory issues
+        self.results = []
+        
         return evaluation_metrics
 
-    def compute_miss_rate(self, results, iou_threshold=0.5):
+    def compute_miss_rate(self, results):
         """
-        Compute the Miss Rate (MR) at different False Positives Per Image (FPPI).
-        :param results: List of detection results in COCO format.
-        :param iou_threshold: IoU threshold for matching.
-        :return: Dictionary containing FPPI and Miss Rate values.
+        Compute Log-Average Miss Rate (LAMR) at different False Positives Per Image (FPPI).
+        :param results: List of detection results.
+        :return: Dictionary containing FPPI, Miss Rate, and LAMR.
         """
-        # img_ids = list(self.image_id_map.keys())
-
-        total_images = len(self.img_ids)
+        total_images = len(self.image_ids)
         tp_list = []
         fp_list = []
-        num_gt = 0
+        num_gt = sum(len(self.annotations[img_id]) for img_id in self.image_ids)
 
-        for img_id in self.img_ids:
+        for img_id in self.image_ids:
             gt_boxes = [ann["bbox"] for ann in self.annotations[img_id]]
             det_boxes = [det["bbox"] for det in results if det["image_id"] == img_id]
             det_scores = [det["score"] for det in results if det["image_id"] == img_id]
-
-            num_gt += len(gt_boxes)
 
             if not det_boxes:
                 fp_list.append(len(gt_boxes))  # All ground truths are missed
@@ -94,7 +117,7 @@ class RGBTEvaluator:
             det_boxes = [det_boxes[i] for i in sorted_indices]
 
             # Compute IoUs
-            matches, false_positives = self.match_detections(gt_boxes, det_boxes, iou_threshold)
+            matches, false_positives = self.match_detections(gt_boxes, det_boxes)
             tp_list.append(matches)
             fp_list.append(false_positives)
 
@@ -104,14 +127,29 @@ class RGBTEvaluator:
         fppi = fp_cumsum / total_images
         miss_rate = 1 - (tp_cumsum / num_gt)
 
-        return {"FPPI": fppi.tolist(), "Miss_Rate": miss_rate.tolist()}
+        # Define standard FPPI thresholds used for LAMR
+        fppi_thresholds = np.array([0.01, 0.0178, 0.0316, 0.0562, 0.1, 0.1778, 0.3162, 0.5623, 1.0])
 
-    def match_detections(self, gt_boxes, det_boxes, iou_threshold):
+        # Interpolate Miss Rate at given FPPI thresholds
+        interpolated_mr = np.interp(fppi_thresholds, fppi, miss_rate, left=1, right=miss_rate[-1])
+
+        # Avoid log(0) by clipping values
+        interpolated_mr = np.clip(interpolated_mr, 1e-6, 1.0)
+
+        # Compute Log-Average Miss Rate (LAMR)
+        lamr = np.exp(np.mean(np.log(interpolated_mr)))
+
+        return {
+            "FPPI": fppi.tolist(),
+            "Miss_Rate": miss_rate.tolist(),
+            "LAMR": lamr
+        }
+
+    def match_detections(self, gt_boxes, det_boxes):
         """
         Match detections to ground truth using IoU.
         :param gt_boxes: List of ground truth bounding boxes.
         :param det_boxes: List of detected bounding boxes.
-        :param iou_threshold: IoU threshold for a valid match.
         :return: Number of true positives and false positives.
         """
         if len(gt_boxes) == 0:
@@ -123,7 +161,7 @@ class RGBTEvaluator:
 
         for det_idx, iou_values in enumerate(ious.T):
             best_match = np.argmax(iou_values)
-            if iou_values[best_match] >= iou_threshold and best_match not in used_gt:
+            if iou_values[best_match] >= self.iou_threshold and best_match not in used_gt:
                 matches += 1
                 used_gt.add(best_match)
 
@@ -146,21 +184,11 @@ class RGBTEvaluator:
         det_x1, det_y1, det_w, det_h = det_boxes[:, 0], det_boxes[:, 1], det_boxes[:, 2], det_boxes[:, 3]
         det_x2, det_y2 = det_x1 + det_w, det_y1 + det_h
 
-        # Compute intersection
         inter_x1 = np.maximum(det_x1[:, None], gt_x1)
         inter_y1 = np.maximum(det_y1[:, None], gt_y1)
         inter_x2 = np.minimum(det_x2[:, None], gt_x2)
         inter_y2 = np.minimum(det_y2[:, None], gt_y2)
 
-        inter_w = np.maximum(0, inter_x2 - inter_x1)
-        inter_h = np.maximum(0, inter_y2 - inter_y1)
-        inter_area = inter_w * inter_h
-
-        # Compute union
-        det_area = det_w * det_h
-        gt_area = gt_w * gt_h
-        union_area = det_area[:, None] + gt_area - inter_area
-
-        # Compute IoU
-        iou_matrix = inter_area / np.maximum(union_area, 1e-6)
-        return iou_matrix
+        inter_area = np.maximum(0, inter_x2 - inter_x1) * np.maximum(0, inter_y2 - inter_y1)
+        union_area = (det_w * det_h)[:, None] + (gt_w * gt_h) - inter_area
+        return inter_area / np.maximum(union_area, 1e-6)
