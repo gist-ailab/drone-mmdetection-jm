@@ -58,10 +58,17 @@ model = dict(
     ),
     roi_head=dict(
         bbox_head=dict(
-            num_classes=len(classes)
+            num_classes=len(classes),
+        ),
+        test_cfg = dict(
+            type = 'nms',
+            iou_threshold = 0.5,
+            min_score = 0.05
         )
     ),
 )
+
+
 
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
@@ -70,7 +77,6 @@ train_pipeline = [
     dict(type='RGBT_Resize', scale=(512, 640), keep_ratio=True),
     dict(type='PackMultiModalDetInputs'),
 ]
-
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadThermalImageFromFile', backend_args=backend_args),
