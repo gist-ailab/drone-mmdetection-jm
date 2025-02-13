@@ -58,10 +58,33 @@ model = dict(
     ),
     roi_head=dict(
         bbox_head=dict(
-            num_classes=len(classes)
-        )
+            num_classes=len(classes),
+            # test_cfg=dict(
+            #     # Set NMS settings for the bounding boxes
+            #     nms=dict(
+            #         type='nms',  # Use Non-Maximum Suppression
+            #         iou_threshold=0.5,  # IoU threshold (visualize boxes with IoU > 0.5)
+            #         score_thr=0.7,  # Score threshold (only visualize boxes with score >= 70%)
+            #     ),
+            #     max_per_img=100  # Optionally limit the maximum number of boxes per image
+            # ),
+        ),
     ),
 )
+
+
+test_cfg = dict(
+    rcnn=dict(
+        score_thr=0.7,
+        nms=dict(type='nms', iou_threshold=0.5),
+        max_per_img=100),
+    roi_head = dict(
+        nms=dict(type='nms', iou_threshold=0.5),
+        score_thr=0.7
+    )
+)
+
+
 
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
@@ -110,6 +133,12 @@ val_dataloader = dict(
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
+
+test_cfg = dict(
+    rcnn=dict(
+        score_thr=0.05,
+        nms=dict(type='nms', iou_threshold=0.5),
+        max_per_img=100))
 
 test_dataloader = val_dataloader
 

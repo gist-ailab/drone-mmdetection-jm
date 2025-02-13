@@ -142,7 +142,7 @@ def main():
 
     if args.show or args.show_dir:
         cfg = trigger_visualization_hook(cfg, args)
-        cfg.model.test_cfg.nms.iou_threshold = 0.5
+        # cfg.model.test_cfg.nms.iou_threshold = 0.5
         cfg.model.test_cfg.score_thr = 0.7
 
     if args.tta:
