@@ -1,4 +1,4 @@
-#   /media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/mcdet/__init__.py
+#  mcdet/__init__.py
 from .apis.custom_inference import inference_rgbt_detector
 from .engine.runner.custom_runner import FLIR_CatRunner
 from .datasets.custom_flir_dataset import FLIRCatDataset, FLIRCatDataset2
@@ -19,6 +19,12 @@ from .evaluation.metrics.miss_rate import RGBTEvaluator
 from .models.backbones.custom_resnet import ATTResNet
 from .models.attention.custom_attention import *
 from .models.layers.custom_res_layer import *
+
+from .models import *
+from .datasets import *
+from evaluation import *
+
+
 
 __all__ = [
     'KaistRgbtCocoDataset','GISTDataset', 'FLIRCatDataset','FLIR_CatRunner', 'FLIR_CATPackDetInputs', 'LoadThermalImageFromFile','CatRGBT',\
