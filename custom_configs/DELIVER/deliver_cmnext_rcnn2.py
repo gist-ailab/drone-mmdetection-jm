@@ -7,7 +7,7 @@ _base_ = [
 
 # Model settings
 model = dict(
-    type='DELIVERFasterRCNN',
+    type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
         type='CMNextBackbone',

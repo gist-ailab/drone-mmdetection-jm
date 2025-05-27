@@ -8,7 +8,7 @@ _base_ = [
 # Model settings
 model = dict(
     type='DELIVERRetinaNet',
-    data_preprocessor=data_preprocessor,
+    data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
         type='CMNextBackbone',
         backbone='CMNeXt-B2',

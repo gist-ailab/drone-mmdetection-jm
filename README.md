@@ -39,7 +39,7 @@
 <div align="center">
 
 English | [简体中文](README_zh-CN.md)
-
+<!-- 
 </div>
 
 <div align="center">
@@ -64,14 +64,22 @@ English | [简体中文](README_zh-CN.md)
 
 <div align="center">
 <img src="https://github.com/open-mmlab/mmdetection/assets/17425982/6c29886f-ae7a-4a55-8be4-352ee85b7d3e"/>
-</div>
+</div> -->
 
-## Introduction
+## Dependency
 
-MMDetection is an open source object detection toolbox based on PyTorch. It is
-a part of the [OpenMMLab](https://openmmlab.com/) project.
+```
+conda create -n openmmlab python=3.8 -y
+pip install fsspec
+conda install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=11.8 -c pytorch -c nvidia
+pip install -U openmim
+mim install mmengine
+mim install "mmcv==2.1.0"       #important
 
-The main branch works with **PyTorch 1.8+**.
+git clone https://github.com/gist-ailab/drone-mmdetection-jm.git
+cd drone-mmdetection-jm
+pip install -v -e .
+```
 
 <img src="https://user-images.githubusercontent.com/12907710/187674113-2074d658-f2fb-42d1-ac15-9c4a695e64d7.png"/>
 

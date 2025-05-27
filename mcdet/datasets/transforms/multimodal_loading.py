@@ -1,7 +1,9 @@
 # mcdet/datasets/transforms/multimodal_loading.py
 import mmcv
 import numpy as np
-from mmdet.datasets.transforms import LoadImageFromFile
+# from mmdet.datasets.transforms import LoadImageFromFile
+from mmcv.transforms import LoadImageFromFile
+
 from mmdet.registry import TRANSFORMS
 from typing import Dict, List, Optional, Union
 
@@ -45,7 +47,6 @@ class LoadDELIVERImages(LoadImageFromFile):
         Returns:
             dict: Results with loaded multimodal images
         """
-        # Load all modality images
         modality_images = []
         modality_paths = results['modality_paths']
         
@@ -61,7 +62,7 @@ class LoadDELIVERImages(LoadImageFromFile):
         # Store as list of images
         results['img'] = modality_images
         results['img_path'] = [modality_paths[mod] for mod in ['rgb', 'depth', 'event', 'lidar']]
-        results['img_shape'] = [img.shape for img in modality_images]
-        results['ori_shape'] = results['img_shape'][0]  # Use RGB shape as reference
-        
+        results['img_shape'] = modality_images[0].shape[:2]  
+        results['ori_shape'] = results['img_shape']  
+
         return results

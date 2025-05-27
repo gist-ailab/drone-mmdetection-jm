@@ -4,7 +4,7 @@ from .deliver_detector import (
     DELIVERFasterRCNN, 
     DELIVERRetinaNet,
     DELIVERDataPreprocessor,
-    stack_multimodal_batch
+    # stack_multimodal_batch
 )
 
 __all__ = [
@@ -12,5 +12,5 @@ __all__ = [
     'DELIVERFasterRCNN', 
     'DELIVERRetinaNet',
     'DELIVERDataPreprocessor',
-    'stack_multimodal_batch'
+    # 'stack_multimodal_batch'
 ]

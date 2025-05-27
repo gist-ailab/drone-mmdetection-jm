@@ -1,10 +1,9 @@
 # Default config for DELIVER detection dataset
 # custom_configs/DELIVER/deliver_dataset.py
-
 import os
 _base_ = [
-    '../_base_/schedules/schedule_2x.py', 
-    '../_base_/default_runtime.py'
+    '../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path
+    '../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  
 ]
 
 # Dataset basic info
@@ -15,14 +14,14 @@ classes = ('Vehicle', 'Human')
 
 # Data preprocessor
 data_preprocessor = dict(
-    type='DELIVERDataPreprocessor',
-    mean=[
+    type='ListDataPreprocessor',
+    mean_=[
         [0.485, 0.456, 0.406],       # RGB (ImageNet - same as DELIVER)
         [0.0, 0.0, 0.0],             # Depth  
         [0.0, 0.0, 0.0],             # Event
         [0.0, 0.0, 0.0]              # LiDAR
     ],
-    std=[
+    std_=[
         [0.229, 0.224, 0.225],       # RGB (ImageNet - same as DELIVER)
         [1.0, 1.0, 1.0],             # Depth
         [1.0, 1.0, 1.0],             # Event
@@ -31,38 +30,55 @@ data_preprocessor = dict(
     pad_size_divisor=32
 )
 
+# data_preprocessor = dict(
+#     type='ImgDataPreprocessor',
+#     mean=[0.485, 0.456, 0.406],       # RGB (ImageNet - same as DELIVER)
+
+    
+#     std=[0.229, 0.224, 0.225] ,      # RGB (ImageNet - same as DELIVER)
+            
+#     pad_size_divisor=32
+# )
+
 # Pipeline settings
 train_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='DELIVERResize', 
-        img_scale=(512,512), 
-        multiscale_mode='range',
-        keep_ratio=True
+        img_scale=(512, 512), 
+        keep_ratio=True,
+        bbox_format='xywh'  # 🔥 xywh format 명시
     ),
-    dict(type='DELIVERRandomFlip', prob=0.5),
-    dict(type='DELIVERNormalize'),
+    dict(
+        type='DELIVERRandomFlip', 
+        prob=0.5,
+        bbox_format='xywh'  # 🔥 xywh format 명시
+    ),
     dict(type='PackDELIVERDetInputs')
 ]
 
 test_pipeline = [
     dict(type='LoadDELIVERImages'),
-    dict(type='DELIVERResize', img_scale=(512,512), keep_ratio=True),
-    dict(type='DELIVERNormalize'),
+    dict(
+        type='DELIVERResize', 
+        img_scale=(512, 512), 
+        keep_ratio=True,
+        bbox_format='xywh'  # 🔥 xywh format 명시
+    ),
     dict(type='PackDELIVERDetInputs')
 ]
 
 # Dataset configs
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=3,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='coco_train.json',
+        ann_file='coco_train_xywh.json',
         data_prefix=dict(img=''),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
@@ -71,7 +87,6 @@ train_dataloader = dict(
             palette=[(220, 20, 60), (119, 11, 32)]
         )
     ),
-    collate_fn=dict(type='deliver_collate_fn')
 )
 
 val_dataloader = dict(
@@ -83,7 +98,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='coco_val.json',
+        ann_file='coco_val_xywh.json',
         data_prefix=dict(img=''),  # Fixed: same as train
         test_mode=True,
         pipeline=test_pipeline,
@@ -92,7 +107,6 @@ val_dataloader = dict(
             palette=[(220, 20, 60), (119, 11, 32)]
         )
     ),
-    collate_fn=dict(type='deliver_collate_fn')
 )
 
 test_dataloader = val_dataloader
@@ -100,7 +114,7 @@ test_dataloader = val_dataloader
 # Evaluation settings  
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=data_root + 'coco_val.json',  # Fixed: consistent with dataset
+    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),  # Fixed: consistent with dataset
     metric='bbox',
     format_only=False
 )

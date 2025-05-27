@@ -22,7 +22,7 @@ from .models.layers.custom_res_layer import *
 
 from .models import *
 from .datasets import *
-from evaluation import *
+from .evaluation import *
 
 
 

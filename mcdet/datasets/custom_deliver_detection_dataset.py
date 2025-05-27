@@ -129,9 +129,10 @@ class DELIVERDetectionDataset(CocoDataset):
             instance = {}
             if ann.get('ignore', False):
                 continue
-            x1, y1, x2, y2 = ann['bbox']
-            w = x2 - x1
-            h = y2 - y1
+            # x1, y1, x2, y2 = ann['bbox']
+            # w = x2 - x1
+            # h = y2 - y1
+            x1, y1, w, h = ann['bbox']
             inter_w = max(0, min(x1 + w, img_info['width']) - max(x1, 0))
             inter_h = max(0, min(y1 + h, img_info['height']) - max(y1, 0))
             if inter_w * inter_h == 0:
@@ -140,7 +141,8 @@ class DELIVERDetectionDataset(CocoDataset):
                 continue
             if ann['category_id'] not in self.cat_ids:
                 continue
-            bbox = [x1, y1, x1 + w, y1 + h] 
+            # bbox = [x1, y1, x1 + w, y1 + h] 
+            bbox = [x1, y1, w, h]
 
             if ann.get('iscrowd', False):
                 instance['ignore_flag'] = 1
