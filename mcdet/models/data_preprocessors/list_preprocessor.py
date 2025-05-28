@@ -236,7 +236,7 @@ class ListDataPreprocessor(ImgDataPreprocessor):
             
             # Convert to xyxy format
             if detected_format != 'xyxy':
-                print(f"Converting bbox format from {detected_format} to xyxy for sample {i}")
+                # print(f"Converting bbox format from {detected_format} to xyxy for sample {i}")
                 gt_instances.bboxes = self._convert_bbox_format(
                     gt_instances.bboxes, 
                     src_format=detected_format, 
