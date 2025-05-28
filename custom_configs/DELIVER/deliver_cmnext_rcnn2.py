@@ -28,8 +28,9 @@ model = dict(
         in_channels=256,
         feat_channels=256,
         anchor_generator=dict(
-            type='AnchorGenerator',
-            scales=[8],
+            type='AnchorGenerator',  # 32 16 8 4 
+            # scales=[8],
+            scales=[2, 4, 8, 16],
             ratios=[0.5, 1.0, 2.0],
             strides=[4, 8, 16, 32, 64]
         ),
@@ -74,9 +75,9 @@ model = dict(
         rpn=dict(
             assigner=dict(
                 type='MaxIoUAssigner',
-                pos_iou_thr=0.7,
-                neg_iou_thr=0.3,
-                min_pos_iou=0.3,
+                pos_iou_thr=0.4,
+                neg_iou_thr=0.1,
+                min_pos_iou=0.1,
                 match_low_quality=True,
                 ignore_iof_thr=-1
             ),
@@ -100,10 +101,10 @@ model = dict(
         rcnn=dict(
             assigner=dict(
                 type='MaxIoUAssigner',
-                pos_iou_thr=0.5,
-                neg_iou_thr=0.5,
-                min_pos_iou=0.5,
-                match_low_quality=False,
+                pos_iou_thr=0.3,        # 🔥 0.5 → 0.3
+                neg_iou_thr=0.1,        # 🔥 0.5 → 0.1  
+                min_pos_iou=0.1,        # 🔥 0.5 → 0.1
+                match_low_quality=True, # 🔥 False → True
                 ignore_iof_thr=-1
             ),
             sampler=dict(
@@ -132,6 +133,19 @@ model = dict(
         )
     )
 )
+
+
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001),
+    clip_grad=dict(max_norm=5, norm_type=2),
+    accumulative_counts=4
+)
+
+
+# custom_hooks = [
+#     dict(type='BboxLossDebugHook', log_interval=50)
+# ]
 
 # Experiment name for logging
 experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x'

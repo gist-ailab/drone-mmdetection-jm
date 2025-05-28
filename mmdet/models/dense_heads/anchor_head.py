@@ -516,7 +516,6 @@ class AnchorHead(BaseDenseHead):
             concat_anchor_list.append(cat_boxes(anchor_list[i]))
         all_anchor_list = images_to_levels(concat_anchor_list,
                                            num_level_anchors)
-
         losses_cls, losses_bbox = multi_apply(
             self.loss_by_feat_single,
             cls_scores,

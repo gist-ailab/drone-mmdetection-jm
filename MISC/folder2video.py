@@ -29,9 +29,9 @@ def folder2video(image_folder, output_video_path, fps=30):
 
 
 
-def run():
-    input = '/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/lecun_ATTNet_swinL_fpn_2x_datav2_flir_adas_rgbt_lr001/20250206_163521/inference'
-    output = '/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/lecun_ATTNet_swinL_fpn_2x_datav2_flir_adas_rgbt_lr001/20250206_163521/inference.mp4'
-    folder2video(input, output, fps=30)
+# def run():
+#     input = '/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/lecun_ATTNet_swinL_fpn_2x_datav2_flir_adas_rgbt_lr001/20250206_163521/inference'
+#     output = '/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/lecun_ATTNet_swinL_fpn_2x_datav2_flir_adas_rgbt_lr001/20250206_163521/inference.mp4'
+#     folder2video(input, output, fps=30)
 
-run()
+# run()

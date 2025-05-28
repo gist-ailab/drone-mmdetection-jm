@@ -30,17 +30,6 @@ data_preprocessor = dict(
     pad_size_divisor=32
 )
 
-# data_preprocessor = dict(
-#     type='ImgDataPreprocessor',
-#     mean=[0.485, 0.456, 0.406],       # RGB (ImageNet - same as DELIVER)
-
-    
-#     std=[0.229, 0.224, 0.225] ,      # RGB (ImageNet - same as DELIVER)
-            
-#     pad_size_divisor=32
-# )
-
-# Pipeline settings
 train_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -71,7 +60,7 @@ test_pipeline = [
 
 # Dataset configs
 train_dataloader = dict(
-    batch_size=3,
+    batch_size=8,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -125,7 +114,7 @@ test_evaluator = val_evaluator
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001),
-    clip_grad=dict(max_norm=35, norm_type=2)
+    clip_grad=dict(max_norm=5, norm_type=2)
 )
 
 # Learning rate schedule
