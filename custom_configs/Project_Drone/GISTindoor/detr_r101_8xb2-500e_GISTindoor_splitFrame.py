@@ -22,6 +22,7 @@ model = dict(
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True,
         pad_size_divisor=1),
+
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -32,6 +33,15 @@ model = dict(
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+
+    backbone=dict(
+        type='CMNextBackbone',
+        backbone='CMNeXt-B2',
+        modals=['rgb', 'depth', 'event', 'lidar'],
+        out_indices=(0, 1, 2, 3),
+        frozen_stages=-1,
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+    ),
     neck=dict(
         type='ChannelMapper',
         in_channels=[2048],

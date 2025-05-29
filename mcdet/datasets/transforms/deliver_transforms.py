@@ -465,3 +465,128 @@ class DELIVERRandomFlip:
                             instance['bbox'] = bbox.tolist()
         
         return results
+    
+
+# Add this to mcdet/datasets/transforms/deliver_transforms.py
+# Add this to mcdet/datasets/transforms/deliver_transforms.py
+
+import mmengine
+import numpy as np
+import random
+from mmdet.datasets.transforms.transforms import BaseTransform
+from mmdet.registry import TRANSFORMS
+from typing import Sequence, Union, Tuple, Dict, List
+
+
+
+# Alternative implementation without cache_randomness dependency
+@TRANSFORMS.register_module()
+class DELIVERRandomChoiceResize(BaseTransform):
+    """Simplified version without cache_randomness dependency."""
+    
+    def __init__(
+        self,
+        scales: Sequence[Union[int, Tuple]],
+        resize_type: str = 'DELIVERResize',
+        **resize_kwargs,
+    ) -> None:
+        super().__init__()
+        
+        if isinstance(scales, list):
+            self.scales = scales
+        else:
+            self.scales = [scales]
+        
+        # Default settings for DELIVER multimodal data
+        default_resize_kwargs = {
+            'keep_ratio': True,
+            'bbox_clip_border': True,
+            'backend': 'cv2',
+            'interpolation': 'bilinear',
+            'bbox_format': 'xywh'
+        }
+        
+        default_resize_kwargs.update(resize_kwargs)
+        self.resize_cfg = dict(type=resize_type, **default_resize_kwargs)
+        
+        # Create a DELIVERResize object with dummy scale
+        self.resize = TRANSFORMS.build({'img_scale': (640, 640), **self.resize_cfg})
+
+    def _random_select(self) -> Tuple[Union[int, Tuple], int]:
+        """Randomly select a scale from given candidates."""
+        scale_idx = random.randint(0, len(self.scales) - 1)
+        scale = self.scales[scale_idx]
+        return scale, scale_idx
+
+    def transform(self, results: Dict) -> Dict:
+        """Apply resize transforms on results from a list of scales."""
+        # Randomly select target scale
+        target_scale, scale_idx = self._random_select()
+        
+        # Update resize object with selected scale
+        self.resize.img_scale = target_scale
+        
+        # Apply resize transform
+        results = self.resize(results)
+        
+        # Add metadata
+        results['scale'] = target_scale
+        results['scale_idx'] = scale_idx
+        results['keep_ratio'] = self.resize.keep_ratio
+        
+        return results
+
+    def __repr__(self) -> str:
+        repr_str = self.__class__.__name__
+        repr_str += f'(scales={self.scales}'
+        repr_str += f', resize_cfg={self.resize_cfg})'
+        return repr_str
+
+
+@TRANSFORMS.register_module() 
+class DELIVERRandomChoice(BaseTransform):
+    """Simplified version without cache_randomness dependency."""
+    
+    def __init__(self, transforms: List[List[Dict]], prob: List[float] = None):
+        super().__init__()
+        self.transforms = []
+        
+        # Build each transform pipeline
+        for pipeline in transforms:
+            built_pipeline = []
+            for transform_cfg in pipeline:
+                transform = TRANSFORMS.build(transform_cfg)
+                built_pipeline.append(transform)
+            self.transforms.append(built_pipeline)
+        
+        # Set probabilities
+        if prob is None:
+            self.prob = [1.0 / len(transforms)] * len(transforms)
+        else:
+            assert len(prob) == len(transforms)
+            assert abs(sum(prob) - 1.0) < 1e-6
+            self.prob = prob
+    
+    def _random_select(self) -> int:
+        """Randomly select a transform pipeline."""
+        return np.random.choice(len(self.transforms), p=self.prob)
+    
+    def transform(self, results: Dict) -> Dict:
+        """Apply randomly selected transform pipeline."""
+        pipeline_idx = self._random_select()
+        selected_pipeline = self.transforms[pipeline_idx]
+        
+        # Apply each transform in the selected pipeline
+        for transform in selected_pipeline:
+            results = transform(results)
+        
+        # Add metadata
+        results['pipeline_idx'] = pipeline_idx
+        
+        return results
+    
+    def __repr__(self) -> str:
+        repr_str = self.__class__.__name__
+        repr_str += f'(num_pipelines={len(self.transforms)}'
+        repr_str += f', prob={self.prob})'
+        return repr_str

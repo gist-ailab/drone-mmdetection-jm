@@ -13,7 +13,7 @@ from mcdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config',default='/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/deliver_cmnext_rcnn2.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_cmnext_deformDETR_E50_accu8_Augresize.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
