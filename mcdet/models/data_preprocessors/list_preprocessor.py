@@ -61,7 +61,7 @@ class ListDataPreprocessor(ImgDataPreprocessor):
                  pad_size_divisor: Optional[int] = None,
                  bgr_to_rgb: bool = False,
                  bbox_format: str = 'xywh',
-                 pad_mode: str = 'stack',
+                 pad_mode: str = 'pad_to_max',
                  fixed_size: Optional[Tuple[int, int]] = None) -> None:
         super().__init__(mean=None, std=None)
         self.pad_size_divisor = pad_size_divisor
@@ -310,25 +310,173 @@ class ListDataPreprocessor(ImgDataPreprocessor):
                     dst_format='xyxy'
                 )
             
-            # Validate converted bboxes
-            self._validate_bboxes(gt_instances.bboxes, data_sample, i)
+            # 🔥 Fix invalid bboxes
+            gt_instances.bboxes = self._validate_and_fix_bboxes(gt_instances.bboxes, data_sample, i)
+            
+            # 🔥 Remove instances that are still invalid
+            self._remove_invalid_instances(data_sample, i)
 
-    def _validate_bboxes(self, bboxes: torch.Tensor, data_sample, sample_idx: int):
-        """Validate bbox coordinates."""
+    def _validate_and_fix_bboxes(self, bboxes: torch.Tensor, data_sample, sample_idx: int) -> torch.Tensor:
+        """Validate and fix bbox coordinates."""
         if len(bboxes) == 0:
+            return bboxes
+            
+        original_bboxes = bboxes.clone()
+        
+        # 1. Fix negative coordinates
+        if (bboxes < 0).any():
+            print(f"Warning: Negative coordinates found in sample {sample_idx}, clamping to 0")
+            bboxes = torch.clamp(bboxes, min=0.0)
+        
+        # 2. Check and fix invalid boxes (x2 <= x1 or y2 <= y1)
+        invalid_width_mask = (bboxes[:, 2] <= bboxes[:, 0])
+        invalid_height_mask = (bboxes[:, 3] <= bboxes[:, 1])
+        
+        if invalid_width_mask.any() or invalid_height_mask.any():
+            print(f"Warning: Invalid bbox dimensions found in sample {sample_idx}")
+            print(f"  Original bboxes: {original_bboxes[invalid_width_mask | invalid_height_mask]}")
+            
+            # Option 1: Fix by adding minimum size
+            min_size = 1.0
+            
+            # Fix width (x2 <= x1)
+            if invalid_width_mask.any():
+                bboxes[invalid_width_mask, 2] = bboxes[invalid_width_mask, 0] + min_size
+            
+            # Fix height (y2 <= y1) 
+            if invalid_height_mask.any():
+                bboxes[invalid_height_mask, 3] = bboxes[invalid_height_mask, 1] + min_size
+                
+            print(f"  Fixed bboxes: {bboxes[invalid_width_mask | invalid_height_mask]}")
+        
+        # 3. Check image boundaries and clip if needed
+        if hasattr(data_sample, 'metainfo') and data_sample.metainfo:
+            img_shape = data_sample.metainfo.get('img_shape', None)
+            if img_shape:
+                img_h, img_w = img_shape[:2]
+                
+                # Clip coordinates to image boundaries
+                bboxes[:, [0, 2]] = torch.clamp(bboxes[:, [0, 2]], min=0, max=img_w)  # x coords
+                bboxes[:, [1, 3]] = torch.clamp(bboxes[:, [1, 3]], min=0, max=img_h)  # y coords
+                
+                # Check if clipping made boxes invalid again
+                width_after_clip = bboxes[:, 2] - bboxes[:, 0]
+                height_after_clip = bboxes[:, 3] - bboxes[:, 1]
+                
+                too_small_mask = (width_after_clip <= 0) | (height_after_clip <= 0)
+                if too_small_mask.any():
+                    print(f"Warning: Some bboxes became too small after clipping in sample {sample_idx}")
+                
+        return bboxes
+
+    def _safe_filter_instances(self, gt_instances, valid_mask, sample_idx: int):
+        """Safely filter InstanceData object maintaining all attribute consistency."""
+        try:
+            # Method 1: Use InstanceData's built-in indexing (most reliable)
+            return gt_instances[valid_mask]
+            
+        except Exception as e1:
+            print(f"Built-in indexing failed: {e1}")
+            
+            try:
+                # Method 2: Create new instance and copy filtered attributes
+                new_instances = type(gt_instances)()
+                
+                # Get all attributes from the original instance
+                for attr_name in dir(gt_instances):
+                    if attr_name.startswith('_'):
+                        continue
+                        
+                    try:
+                        attr_value = getattr(gt_instances, attr_name)
+                        
+                        # Skip methods and non-tensor attributes
+                        if callable(attr_value):
+                            continue
+                            
+                        # Handle tensor attributes with same length as mask
+                        if torch.is_tensor(attr_value):
+                            if len(attr_value) == len(valid_mask):
+                                setattr(new_instances, attr_name, attr_value[valid_mask])
+                            else:
+                                # Keep attributes with different lengths as-is
+                                setattr(new_instances, attr_name, attr_value)
+                        else:
+                            # Handle non-tensor attributes
+                            if hasattr(attr_value, '__len__') and len(attr_value) == len(valid_mask):
+                                # Filter list/array-like attributes
+                                if isinstance(attr_value, (list, tuple)):
+                                    filtered_value = [attr_value[i] for i in range(len(valid_mask)) if valid_mask[i]]
+                                    setattr(new_instances, attr_name, type(attr_value)(filtered_value))
+                                else:
+                                    setattr(new_instances, attr_name, attr_value)
+                            else:
+                                # Keep other attributes as-is
+                                setattr(new_instances, attr_name, attr_value)
+                                
+                    except Exception as attr_error:
+                        # Skip problematic attributes
+                        print(f"Skipping attribute {attr_name}: {attr_error}")
+                        continue
+                
+                return new_instances
+                
+            except Exception as e2:
+                print(f"Manual copying failed: {e2}")
+                
+                # Method 3: Only filter essential attributes (fallback)
+                try:
+                    new_instances = type(gt_instances)()
+                    
+                    if hasattr(gt_instances, 'bboxes') and torch.is_tensor(gt_instances.bboxes):
+                        new_instances.bboxes = gt_instances.bboxes[valid_mask]
+                    
+                    if hasattr(gt_instances, 'labels') and torch.is_tensor(gt_instances.labels):
+                        new_instances.labels = gt_instances.labels[valid_mask]
+                    
+                    if hasattr(gt_instances, 'ignore_flags') and gt_instances.ignore_flags is not None:
+                        if torch.is_tensor(gt_instances.ignore_flags):
+                            new_instances.ignore_flags = gt_instances.ignore_flags[valid_mask]
+                    
+                    # Copy other common attributes if they exist
+                    for attr in ['scores', 'areas', 'iscrowd']:
+                        if hasattr(gt_instances, attr):
+                            attr_value = getattr(gt_instances, attr)
+                            if torch.is_tensor(attr_value) and len(attr_value) == len(valid_mask):
+                                setattr(new_instances, attr, attr_value[valid_mask])
+                    
+                    return new_instances
+                    
+                except Exception as e3:
+                    print(f"Fallback method failed: {e3}")
+                    print("Returning original instances without filtering")
+                    return gt_instances
+
+    def _remove_invalid_instances(self, data_sample, sample_idx: int):
+        """Remove instances with invalid bboxes that cannot be fixed."""
+        if not hasattr(data_sample, 'gt_instances') or data_sample.gt_instances is None:
             return
             
-        # Check for negative coordinates
-        if (bboxes < 0).any():
-            print(f"Warning: Negative coordinates found in sample {sample_idx}")
+        gt_instances = data_sample.gt_instances
+        if not hasattr(gt_instances, 'bboxes') or gt_instances.bboxes is None or len(gt_instances.bboxes) == 0:
+            return
             
-        # Check for invalid boxes (x2 <= x1 or y2 <= y1)
-        invalid_width = (bboxes[:, 2] <= bboxes[:, 0]).any()
-        invalid_height = (bboxes[:, 3] <= bboxes[:, 1]).any()
+        bboxes = gt_instances.bboxes
         
-        if invalid_width or invalid_height:
-            print(f"Warning: Invalid bbox dimensions in sample {sample_idx}")
-            print(f"  Bboxes: {bboxes}")
+        # Find valid boxes (width > 0 and height > 0)
+        widths = bboxes[:, 2] - bboxes[:, 0]
+        heights = bboxes[:, 3] - bboxes[:, 1]
+        valid_mask = (widths > 0.5) & (heights > 0.5)  # Minimum 0.5 pixel size
+        
+        if not valid_mask.all():
+            num_invalid = (~valid_mask).sum().item()
+            num_valid = valid_mask.sum().item()
+            
+            print(f"Sample {sample_idx}: Removing {num_invalid} invalid instances, keeping {num_valid} valid instances")
+            
+            # Use safe filtering method
+            filtered_instances = self._safe_filter_instances(gt_instances, valid_mask, sample_idx)
+            data_sample.gt_instances = filtered_instances
 
     def _move_gt_to_device(self, data_samples: List, target_device: torch.device):
         """Move ground truth data to target device."""
@@ -361,7 +509,7 @@ class ListDataPreprocessor(ImgDataPreprocessor):
             
         # Get shape information from first modality (assumed to be primary)
         padded_shape = padded_inputs[0].shape[2:]  # (H, W)
-        batch_input_shape = padded_shape
+        batch_input_shape = padded_shape # (B, C, H, W)
         
         for data_sample in data_samples:
             if hasattr(data_sample, 'set_metainfo'):

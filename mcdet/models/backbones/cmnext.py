@@ -1,4 +1,4 @@
-# mcdet/models/backbones/cmnext_simple.py
+# mcdet/models/backbones/cmnext.py
 
 import torch
 import math
