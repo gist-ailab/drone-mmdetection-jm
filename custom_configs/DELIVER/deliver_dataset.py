@@ -8,7 +8,7 @@ _base_ = [
 
 # Dataset basic info
 dataset_type = 'DELIVERDetectionDataset'
-data_root = '/media/jemo/HDD1/Workspace/dset/DELIVER/'  # Added trailing slash
+data_root = '/mnt/nvme/workspace/AnySeg/data/DELIVER/'  # Added trailing slash
 backend_args = None
 classes = ('Vehicle', 'Human')
 
