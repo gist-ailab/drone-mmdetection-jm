@@ -2,15 +2,12 @@ import os
 _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
-
-# Base config의 optimizer 설정 제거
-_delete_ = ['optim_wrapper']
-
-data_root = '/SSDb/jemo_maeng/dset/DELIVER'
+data_root= '/SSDb/jemo_maeng/dset/DELIVER'
 
 data_preprocessor = dict(
     type='ListDataPreprocessor',
     pad_mode='pad_to_max',  
+
     mean_=[
         [0.485, 0.456, 0.406],       # RGB (ImageNet - same as DELIVER)
         [0.0, 0.0, 0.0],             # Depth  
@@ -25,8 +22,9 @@ data_preprocessor = dict(
     ],
     pad_size_divisor=32
 )
+# Model s
 
-# Model settings
+
 model = dict(
     type='DINO',
     num_queries=900,  # num_matching_queries
@@ -104,9 +102,10 @@ model = dict(
             ])),
     test_cfg=dict(max_per_img=300))  # 100 for DeformDETR
 
-# train_pipeline - backend_args 문법 수정
+# train_pipeline, NOTE the img_scale and the Pad's size_divisor is different
+# from the default setting in mmdet.
 train_pipeline = [
-    dict(type='LoadDELIVERImages', backend_args=_base_.backend_args),
+    dict(type='LoadDELIVERImages', backend_args={{_base_.backend_args}}),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(type='DELIVERRandomFlip', prob=0.5),
     dict(
@@ -152,21 +151,8 @@ train_pipeline = [
     dict(type='PackDELIVERDetInputs')
 ]
 
-# Validation pipeline 추가 (누락되어 있었음)
-val_pipeline = [
-    dict(type='LoadDELIVERImages', backend_args=_base_.backend_args),
-    dict(type='LoadAnnotations', with_bbox=True),
-    dict(
-        type='DELIVERRandomChoiceResize',
-        scales=[(800, 1333)],
-        keep_ratio=True,
-        bbox_format='xywh'
-    ),
-    dict(type='PackDELIVERDetInputs')
-]
-
 train_dataloader = dict(
-    batch_size=1,  # 6 GPU * 2 = 12 total batch size
+    batch_size=1,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -174,8 +160,10 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file='coco_train_xywh.json',
         pipeline=train_pipeline,
+
     ),
 )
+
 
 val_dataloader = dict(
     batch_size=1,
@@ -186,7 +174,6 @@ val_dataloader = dict(
     dataset=dict(
         data_root=data_root,
         ann_file='coco_val_xywh.json',
-        pipeline=val_pipeline,  # 명시적으로 추가
     ),
 )
 
@@ -195,23 +182,35 @@ test_dataloader = val_dataloader
 # Evaluation settings  
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),
+    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),  # Fixed: consistent with dataset
     metric='bbox',
     format_only=False
 )
 
+# optimizer
+# optim_wrapper = dict(
+#     type='OptimWrapper',
+#     optimizer=dict(
+#         type='AdamW',
+#         lr=0.0001,  # 0.0002 for DeformDETR
+#         weight_decay=0.0001),
+#     clip_grad=dict(max_norm=0.1, norm_type=2),
+#     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)})
+# )  # custom_keys contains sampling_offsets and reference_points in DeformDETR  # noqa
+
 # AdamW optimizer 설정 - base config의 SGD 설정을 완전히 덮어씀
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001),
-    clip_grad=dict(max_norm=5, norm_type=2)
+    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001),
+    clip_grad=dict(max_norm=5, norm_type=2),
+    accumulative_counts=16
+
 )
 
-
-# Learning policy
-max_epochs = 24
+# learning policy
+max_epochs = 200
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=5)
+    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
@@ -226,18 +225,9 @@ param_scheduler = [
         gamma=0.1)
 ]
 
-# Auto scale learning rate
-auto_scale_lr = dict(enable=True, base_batch_size=1)  # 6 GPU * 2 batch_size
 
-# Experiment name
-experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'cmnext_dino_config.py')))[0]
+auto_scale_lr = dict(base_batch_size=1)
+experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'
-
-# Environment settings for distributed training
-env_cfg = dict(
-    cudnn_benchmark=False,
-    mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0),
-    dist_cfg=dict(backend='nccl'),
-)

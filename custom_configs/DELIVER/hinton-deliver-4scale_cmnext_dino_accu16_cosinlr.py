@@ -158,7 +158,7 @@ val_pipeline = [
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='DELIVERRandomChoiceResize',
-        scales=[(800, 1333)],
+        scales=[(512, 512)],
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -203,13 +203,15 @@ val_evaluator = dict(
 # AdamW optimizer 설정 - base config의 SGD 설정을 완전히 덮어씀
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001),
-    clip_grad=dict(max_norm=5, norm_type=2)
+    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001),
+    clip_grad=dict(max_norm=5, norm_type=2),
+    accumulative_counts=16
+
 )
 
 
 # Learning policy
-max_epochs = 24
+max_epochs = 200
 train_cfg = dict(
     type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=5)
 
@@ -218,19 +220,19 @@ test_cfg = dict(type='TestLoop')
 
 param_scheduler = [
     dict(
-        type='MultiStepLR',
+        type='CosineAnnealingLR',
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[11],
-        gamma=0.1)
+        T_max=max_epochs,
+        eta_min=1e-6)
 ]
-
 # Auto scale learning rate
-auto_scale_lr = dict(enable=True, base_batch_size=1)  # 6 GPU * 2 batch_size
+auto_scale_lr = dict(enable=True, base_batch_size=16)  # 6 GPU * 2 batch_size
 
 # Experiment name
-experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'cmnext_dino_config.py')))[0]
+experiment_name ='hinton-deliver-4scale_cmnext_dino_accu16_cosinlr'
+
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

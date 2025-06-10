@@ -764,3 +764,14 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
             tensor.normal_(mean, std)
             tensor.clamp_(min=a, max=b)
         return tensor
+    
+
+
+
+
+# def process(tensor):
+#     tensor = tensor.cpu().numpy()
+#     tensor = np.abs(tensor * 100).astype(np.uint8)
+#     tensor = tensor.transpose(1,2,0)
+#     return tensor
+    

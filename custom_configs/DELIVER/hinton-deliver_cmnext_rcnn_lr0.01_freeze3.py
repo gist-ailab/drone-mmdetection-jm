@@ -12,12 +12,11 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='StitchFusionBackbone',
-        backbone='StitchFusion-B2',
+        type='CMNextBackbone',
+        backbone='CMNeXt-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=-1,
-        adapter_type='every_one',    
+        frozen_stages=3,
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -138,7 +137,7 @@ model = dict(
 )
 
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=8,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -179,7 +178,7 @@ optim_wrapper = dict(
 
 
 # Experiment name for logging
-experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
+experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

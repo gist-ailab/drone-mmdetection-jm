@@ -17,7 +17,7 @@ model = dict(
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        adapter_type='every_one',    
+        adapter_type='every_two',    
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -174,12 +174,12 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
-    accumulative_counts=4
+    accumulative_counts=8
 )
 
 
 # Experiment name for logging
-experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
-
+# experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
+experiment_name = 'hinton-deliver_stitchfusion_rcnn_lr0.01_sharedeverytwo'
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

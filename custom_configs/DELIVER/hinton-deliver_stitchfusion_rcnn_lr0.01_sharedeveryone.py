@@ -1,5 +1,5 @@
-# CMNeXt Detection with RCNN detector
-# custom_configs/DELIVER/deliver_cmnext_rcnn.py
+# StitchFusion Detection with RCNN detector
+# custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_sharedeveryone.py
 import os
 _base_ = [
     './deliver_dataset.py'  # Inherit dataset config

@@ -152,7 +152,7 @@ train_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=1,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -188,15 +188,22 @@ val_evaluator = dict(
 )
 
 # optimizer
+# optim_wrapper = dict(
+#     type='OptimWrapper',
+#     optimizer=dict(
+#         type='AdamW',
+#         lr=0.0001,  # 0.0002 for DeformDETR
+#         weight_decay=0.0001),
+#     clip_grad=dict(max_norm=0.1, norm_type=2),
+#     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)})
+# )  # custom_keys contains sampling_offsets and reference_points in DeformDETR  # noqa
+
+# AdamW optimizer 설정 - base config의 SGD 설정을 완전히 덮어씀
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(
-        type='AdamW',
-        lr=0.0001,  # 0.0002 for DeformDETR
-        weight_decay=0.0001),
-    clip_grad=dict(max_norm=0.1, norm_type=2),
-    paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)})
-)  # custom_keys contains sampling_offsets and reference_points in DeformDETR  # noqa
+    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001),
+    clip_grad=dict(max_norm=5, norm_type=2)
+)
 
 # learning policy
 max_epochs = 24
@@ -217,7 +224,7 @@ param_scheduler = [
 ]
 
 
-auto_scale_lr = dict(base_batch_size=4)
+auto_scale_lr = dict(base_batch_size=1)
 experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
 
 # Override work_dir if needed
