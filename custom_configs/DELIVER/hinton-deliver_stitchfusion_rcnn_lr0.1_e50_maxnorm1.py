@@ -12,11 +12,12 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='StitchFusionBackbone',
+        backbone='StitchFusion-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=4,
+        frozen_stages=-1,
+        adapter_type='shared',    
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -137,7 +138,7 @@ model = dict(
 )
 
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=4,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -161,6 +162,11 @@ val_dataloader = dict(
 
 test_dataloader = val_dataloader
 
+train_cfg = dict(
+    type='EpochBasedTrainLoop', 
+    max_epochs=50, 
+    val_interval=1)
+
 # Evaluation settings  
 val_evaluator = dict(
     type='CocoMetric',
@@ -171,24 +177,55 @@ val_evaluator = dict(
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+    optimizer=dict(type='SGD', lr=0.1, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
     accumulative_counts=4
 )
 
+# param_scheduler = [
+#     dict(
+#         type='LinearLR',
+#         start_factor=0.001,
+#         by_epoch=False,
+#         begin=0,
+#         end=500),  # warmup
+#     dict(
+#         type='CosineAnnealingLR',
+#         T_max=100,  # cosine annealing
+#         by_epoch=True,
+#         begin=10,
+#         end=50,
+#         eta_min=1e-6)
+# ]
+
+
+# ✅ FIXED: Working WandB configuration
 vis_backends = [
     dict(type='LocalVisBackend'),
     dict(
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='hinton-deliver_cmnext_rcnn_lr0.01_freezeAll',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='CMNeXt RCNN with freezed backbone',
+            name='hinton-deliver_stitchfusion_rcnn_lr0.1_e50_maxnorm1',
+            tags=['StitchFusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='StitchFusion RCNN - Working config',
             save_code=True
         ),
+        define_metric_cfg=dict(
+            loss='min',
+            loss_rpn_cls='min', 
+            loss_rpn_bbox='min',
+            loss_cls='min',
+            loss_bbox='min',
+            acc='max',
+            lr='last',
+            bbox_mAP='max',
+            bbox_mAP_50='max',
+            bbox_mAP_75='max'
+        )
     )
 ]
+
 # ✅ Standard hooks configuration
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
@@ -229,8 +266,9 @@ visualizer = dict(
     name='visualizer'
 )
 
+
 # Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll'
+experiment_name = 'hinton-deliver_stitchfusion_rcnn_lr0.01_e50'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

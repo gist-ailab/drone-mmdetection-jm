@@ -12,11 +12,12 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='StitchFusionBackbone',
+        backbone='StitchFusion-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=4,
+        frozen_stages=-1,
+        adapter_type='every_two',    
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -137,7 +138,7 @@ model = dict(
 )
 
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=4,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -171,20 +172,38 @@ val_evaluator = dict(
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+    optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
-    accumulative_counts=4
+    accumulative_counts=8
 )
 
+
+# learning policy
+max_epochs = 24
+train_cfg = dict(
+    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
+
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
+
+param_scheduler = [
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=max_epochs,
+        by_epoch=True,
+        milestones=[11],
+        gamma=0.1)
+]
 vis_backends = [
     dict(type='LocalVisBackend'),
     dict(
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='hinton-deliver_cmnext_rcnn_lr0.01_freezeAll',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='CMNeXt RCNN with freezed backbone',
+            name='debug-hinton-deliver_stitchfusion_rcnn_lr0.0025_sharedeverytwo',
+            tags=['Stitchfusion', 'RCNN', 'full-finetune',],
+            notes='Stitchfusion RCNN with lr0.0025 and shared every two',
             save_code=True
         ),
     )
@@ -229,8 +248,9 @@ visualizer = dict(
     name='visualizer'
 )
 
-# Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll'
 
+# Experiment name for logging
+# experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
+experiment_name = 'debug-hinton-deliver_stitchfusion_rcnn_lr0.0025_sharedeverytwo'
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

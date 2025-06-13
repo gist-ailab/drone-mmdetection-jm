@@ -10,7 +10,8 @@
 from .cmnext import CMNextBackbone
 from .stitchfusion import StitchFusionBackbone
 from .custom_resnet import ATTResNet
+from .geminifusion import GeminiFusionBackbone
 # from .base_backbone import BaseBackbone
 
 
-__all__ = ['CMNextBackbone', 'StitchFusionBackbone']
+__all__ = ['CMNextBackbone', 'StitchFusionBackbone', 'GeminiFusionBackbone']
