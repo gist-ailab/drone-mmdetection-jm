@@ -14,10 +14,11 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='GeminiFusion_second',
+        type='GeminiFusion',
         # variant='B2',
         backbone='GeminiFusion-B2',
-        modals=['rgb', 'depth', 'event', 'lidar'],
+        # modals=['rgb', 'depth', 'event', 'lidar'],
+        modals=['rgb', 'depth'],
         out_indices=(0, 1, 2, 3),
         # frozen_stages=-1,
         # pretrained='/mnt/nvme/workspace/drone-mmdetection-jm/ckpts/mit_b2.pth'
@@ -188,7 +189,7 @@ optim_wrapper = dict(
 
 
 # Experiment name for logging
-experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01_2'
+experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01_feature_fusion'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

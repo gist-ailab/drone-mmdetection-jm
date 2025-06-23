@@ -1,0 +1,81 @@
+{
+  "os": "Linux-5.15.0-82-generic-x86_64-with-glibc2.17",
+  "python": "CPython 3.8.12",
+  "startedAt": "2025-06-07T11:06:35.405733Z",
+  "args": [
+    "custom_configs/DELIVER/hinton-deliver_geminifusion_rcnn_lr0.01.py"
+  ],
+  "program": "tools/train.py",
+  "codePath": "tools/train.py",
+  "git": {
+    "remote": "git@github.com:gist-ailab/drone-mmdetection-jm.git",
+    "commit": "0363a12cde21a66cb39f94d56c3092a4ffbe556c"
+  },
+  "email": "leowiu24@naver.com",
+  "root": "/SSDb/sangmin_park/drone-mmdetection-jm",
+  "host": "ailab-server-hinton",
+  "executable": "/home/sangmin_park/anaconda3/envs/geminifusion/bin/python",
+  "codePathLocal": "tools/train.py",
+  "cpu_count": 48,
+  "cpu_count_logical": 96,
+  "gpu": "NVIDIA TITAN RTX",
+  "gpu_count": 6,
+  "disk": {
+    "/": {
+      "total": "3778027606016",
+      "used": "3541205147648"
+    }
+  },
+  "memory": {
+    "total": "337666215936"
+  },
+  "cpu": {
+    "count": 48,
+    "countLogical": 96
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-3a31d1e4-b512-70fa-d1de-135a9e425e4e"
+    },
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-b4416fa3-fa9f-76f8-41a3-358a7a87ccd6"
+    },
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-bcc01d3f-5f5d-6974-1813-fe18818d2167"
+    },
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-53eab530-c37d-6dd2-a6c1-4b0846ccb7e7"
+    },
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-dde8e7f3-1ef7-9922-1982-961cca0efc64"
+    },
+    {
+      "name": "NVIDIA TITAN RTX",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-e41a33ff-4186-4dd4-0fb1-2b57e1a6a3f2"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

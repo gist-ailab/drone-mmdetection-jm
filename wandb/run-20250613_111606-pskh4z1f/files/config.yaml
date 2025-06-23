@@ -1,0 +1,504 @@
+_cfg_dict:
+    value:
+        auto_scale_lr:
+            base_batch_size: 16
+            enable: false
+        backend_args: null
+        classes:
+            - Vehicle
+            - Human
+        custom_hooks:
+            - init_kwargs:
+                config:
+                    batch_size: 4
+                    epochs: 24
+                    lr: 0.01
+                name: hinton-deliver_geminifusion_rcnn_lr0.01
+                project: geminifusion_1
+              interval: 50
+              log_checkpoint: false
+              log_checkpoint_metadata: true
+              num_eval_images: 10
+              type: WandbHook
+        data_preprocessor:
+            mean_:
+                - - 0.485
+                  - 0.456
+                  - 0.406
+                - - 0
+                  - 0
+                  - 0
+                - - 0
+                  - 0
+                  - 0
+                - - 0
+                  - 0
+                  - 0
+            pad_size_divisor: 32
+            std_:
+                - - 0.229
+                  - 0.224
+                  - 0.225
+                - - 1
+                  - 1
+                  - 1
+                - - 1
+                  - 1
+                  - 1
+                - - 1
+                  - 1
+                  - 1
+            type: ListDataPreprocessor
+        data_root: /SSDb/jemo_maeng/dset/DELIVER
+        dataset_type: DELIVERDetectionDataset
+        default_hooks:
+            checkpoint:
+                interval: 1
+                save_best: coco/bbox_mAP
+                type: CheckpointHook
+            logger:
+                interval: 50
+                type: LoggerHook
+            param_scheduler:
+                type: ParamSchedulerHook
+            sampler_seed:
+                type: DistSamplerSeedHook
+            timer:
+                type: IterTimerHook
+            visualization:
+                type: DetVisualizationHook
+        default_scope: mmdet
+        env_cfg:
+            cudnn_benchmark: false
+            dist_cfg:
+                backend: nccl
+            mp_cfg:
+                mp_start_method: fork
+                opencv_num_threads: 0
+        experiment_name: deliver_cmnext_b2_faster_rcnn_2x_lr0.01
+        load_from: null
+        log_level: INFO
+        log_processor:
+            by_epoch: true
+            type: LogProcessor
+            window_size: 50
+        model:
+            backbone:
+                backbone: GeminiFusion-B2
+                frozen_stages: -1
+                modals:
+                    - rgb
+                    - depth
+                    - event
+                    - lidar
+                out_indices:
+                    - 0
+                    - 1
+                    - 2
+                    - 3
+                type: GeminiFusion
+            data_preprocessor:
+                mean_:
+                    - - 0.485
+                      - 0.456
+                      - 0.406
+                    - - 0
+                      - 0
+                      - 0
+                    - - 0
+                      - 0
+                      - 0
+                    - - 0
+                      - 0
+                      - 0
+                pad_size_divisor: 32
+                std_:
+                    - - 0.229
+                      - 0.224
+                      - 0.225
+                    - - 1
+                      - 1
+                      - 1
+                    - - 1
+                      - 1
+                      - 1
+                    - - 1
+                      - 1
+                      - 1
+                type: ListDataPreprocessor
+            neck:
+                in_channels:
+                    - 64
+                    - 128
+                    - 320
+                    - 512
+                num_outs: 5
+                out_channels: 256
+                type: FPN
+            roi_head:
+                bbox_head:
+                    bbox_coder:
+                        target_means:
+                            - 0
+                            - 0
+                            - 0
+                            - 0
+                        target_stds:
+                            - 0.1
+                            - 0.1
+                            - 0.2
+                            - 0.2
+                        type: DeltaXYWHBBoxCoder
+                    fc_out_channels: 1024
+                    in_channels: 256
+                    loss_bbox:
+                        loss_weight: 1
+                        type: L1Loss
+                    loss_cls:
+                        loss_weight: 1
+                        type: CrossEntropyLoss
+                        use_sigmoid: false
+                    num_classes: 2
+                    reg_class_agnostic: false
+                    roi_feat_size: 7
+                    type: Shared2FCBBoxHead
+                bbox_roi_extractor:
+                    featmap_strides:
+                        - 4
+                        - 8
+                        - 16
+                        - 32
+                    out_channels: 256
+                    roi_layer:
+                        output_size: 7
+                        sampling_ratio: 0
+                        type: RoIAlign
+                    type: SingleRoIExtractor
+                type: StandardRoIHead
+            rpn_head:
+                anchor_generator:
+                    ratios:
+                        - 0.5
+                        - 1
+                        - 2
+                    scales:
+                        - 2
+                        - 4
+                        - 8
+                        - 16
+                    strides:
+                        - 4
+                        - 8
+                        - 16
+                        - 32
+                        - 64
+                    type: AnchorGenerator
+                bbox_coder:
+                    target_means:
+                        - 0
+                        - 0
+                        - 0
+                        - 0
+                    target_stds:
+                        - 1
+                        - 1
+                        - 1
+                        - 1
+                    type: DeltaXYWHBBoxCoder
+                feat_channels: 256
+                in_channels: 256
+                loss_bbox:
+                    loss_weight: 1
+                    type: L1Loss
+                loss_cls:
+                    loss_weight: 1
+                    type: CrossEntropyLoss
+                    use_sigmoid: true
+                type: RPNHead
+            test_cfg:
+                rcnn:
+                    max_per_img: 100
+                    nms:
+                        iou_threshold: 0.5
+                        type: nms
+                    score_thr: 0.05
+                rpn:
+                    max_per_img: 1000
+                    min_bbox_size: 0
+                    nms:
+                        iou_threshold: 0.7
+                        type: nms
+                    nms_pre: 1000
+            train_cfg:
+                rcnn:
+                    assigner:
+                        ignore_iof_thr: -1
+                        match_low_quality: false
+                        min_pos_iou: 0.5
+                        neg_iou_thr: 0.5
+                        pos_iou_thr: 0.5
+                        type: MaxIoUAssigner
+                    debug: false
+                    pos_weight: -1
+                    sampler:
+                        add_gt_as_proposals: true
+                        neg_pos_ub: -1
+                        num: 512
+                        pos_fraction: 0.25
+                        type: RandomSampler
+                rpn:
+                    allowed_border: -1
+                    assigner:
+                        ignore_iof_thr: -1
+                        match_low_quality: true
+                        min_pos_iou: 0.3
+                        neg_iou_thr: 0.3
+                        pos_iou_thr: 0.7
+                        type: MaxIoUAssigner
+                    debug: false
+                    pos_weight: -1
+                    sampler:
+                        add_gt_as_proposals: false
+                        neg_pos_ub: -1
+                        num: 256
+                        pos_fraction: 0.5
+                        type: RandomSampler
+                rpn_proposal:
+                    max_per_img: 1000
+                    min_bbox_size: 0
+                    nms:
+                        iou_threshold: 0.7
+                        type: nms
+                    nms_pre: 2000
+            type: FasterRCNN
+        optim_wrapper:
+            accumulative_counts: 4
+            clip_grad:
+                max_norm: 5
+                norm_type: 2
+            optimizer:
+                lr: 0.01
+                momentum: 0.9
+                type: SGD
+                weight_decay: 0.0001
+            type: OptimWrapper
+        param_scheduler:
+            - begin: 0
+              by_epoch: false
+              end: 500
+              start_factor: 0.001
+              type: LinearLR
+            - begin: 0
+              by_epoch: true
+              end: 24
+              gamma: 0.1
+              milestones:
+                - 16
+                - 22
+              type: MultiStepLR
+        randomness:
+            deterministic: false
+            seed: 0
+        resume: false
+        test_cfg:
+            type: TestLoop
+        test_dataloader:
+            batch_size: 1
+            dataset:
+                ann_file: coco_val_xywh.json
+                data_prefix:
+                    img: ""
+                data_root: /SSDb/jemo_maeng/dset/DELIVER
+                metainfo:
+                    classes:
+                        - Vehicle
+                        - Human
+                    palette:
+                        - - 220
+                          - 20
+                          - 60
+                        - - 119
+                          - 11
+                          - 32
+                pipeline:
+                    - type: LoadDELIVERImages
+                    - bbox_format: xywh
+                      img_scale:
+                        - 512
+                        - 512
+                      keep_ratio: true
+                      type: DELIVERResize
+                    - type: PackDELIVERDetInputs
+                test_mode: true
+                type: DELIVERDetectionDataset
+            drop_last: false
+            num_workers: 2
+            persistent_workers: true
+            sampler:
+                shuffle: false
+                type: DefaultSampler
+        test_evaluator:
+            ann_file: /mnt/nvme/workspace/AnySeg/data/DELIVER/coco_val_xywh.json
+            format_only: false
+            metric: bbox
+            type: CocoMetric
+        test_pipeline:
+            - type: LoadDELIVERImages
+            - bbox_format: xywh
+              img_scale:
+                - 512
+                - 512
+              keep_ratio: true
+              type: DELIVERResize
+            - type: PackDELIVERDetInputs
+        train_cfg:
+            max_epochs: 24
+            type: EpochBasedTrainLoop
+            val_interval: 1
+        train_dataloader:
+            batch_size: 4
+            dataset:
+                ann_file: coco_train_xywh.json
+                data_prefix:
+                    img: ""
+                data_root: /SSDb/jemo_maeng/dset/DELIVER
+                filter_cfg:
+                    filter_empty_gt: true
+                    min_size: 32
+                metainfo:
+                    classes:
+                        - Vehicle
+                        - Human
+                    palette:
+                        - - 220
+                          - 20
+                          - 60
+                        - - 119
+                          - 11
+                          - 32
+                pipeline:
+                    - type: LoadDELIVERImages
+                    - type: LoadAnnotations
+                      with_bbox: true
+                    - bbox_format: xywh
+                      img_scale:
+                        - 512
+                        - 512
+                      keep_ratio: true
+                      type: DELIVERResize
+                    - bbox_format: xywh
+                      prob: 0.5
+                      type: DELIVERRandomFlip
+                    - type: PackDELIVERDetInputs
+                type: DELIVERDetectionDataset
+            num_workers: 2
+            persistent_workers: true
+            sampler:
+                shuffle: true
+                type: DefaultSampler
+        train_pipeline:
+            - type: LoadDELIVERImages
+            - type: LoadAnnotations
+              with_bbox: true
+            - bbox_format: xywh
+              img_scale:
+                - 512
+                - 512
+              keep_ratio: true
+              type: DELIVERResize
+            - bbox_format: xywh
+              prob: 0.5
+              type: DELIVERRandomFlip
+            - type: PackDELIVERDetInputs
+        val_cfg:
+            type: ValLoop
+        val_dataloader:
+            batch_size: 1
+            dataset:
+                ann_file: coco_val_xywh.json
+                data_prefix:
+                    img: ""
+                data_root: /SSDb/jemo_maeng/dset/DELIVER
+                metainfo:
+                    classes:
+                        - Vehicle
+                        - Human
+                    palette:
+                        - - 220
+                          - 20
+                          - 60
+                        - - 119
+                          - 11
+                          - 32
+                pipeline:
+                    - type: LoadDELIVERImages
+                    - bbox_format: xywh
+                      img_scale:
+                        - 512
+                        - 512
+                      keep_ratio: true
+                      type: DELIVERResize
+                    - type: PackDELIVERDetInputs
+                test_mode: true
+                type: DELIVERDetectionDataset
+            drop_last: false
+            num_workers: 2
+            persistent_workers: true
+            sampler:
+                shuffle: false
+                type: DefaultSampler
+        val_evaluator:
+            ann_file: /SSDb/jemo_maeng/dset/DELIVER/coco_val_xywh.json
+            format_only: false
+            metric: bbox
+            type: CocoMetric
+        vis_backends:
+            - type: LocalVisBackend
+        visualizer:
+            name: visualizer
+            type: DetLocalVisualizer
+            vis_backends:
+                - type: LocalVisBackend
+        work_dir: ./work_dirs/deliver_cmnext_b2_faster_rcnn_2x_lr0.01
+_filename:
+    value: custom_configs/DELIVER/hinton-deliver_geminifusion_rcnn_lr0.01.py
+_format_python_code:
+    value: true
+_imported_names:
+    value: []
+_text:
+    value: "/SSDb/sangmin_park/drone-mmdetection-jm/configs/_base_/schedules/schedule_2x.py\n# training schedule for 2x\ntrain_cfg = dict(type='EpochBasedTrainLoop', max_epochs=24, val_interval=1)\nval_cfg = dict(type='ValLoop')\ntest_cfg = dict(type='TestLoop')\n\n# learning rate\nparam_scheduler = [\n    dict(\n        type='LinearLR', start_factor=0.001, by_epoch=False, begin=0, end=500),\n    dict(\n        type='MultiStepLR',\n        begin=0,\n        end=24,\n        by_epoch=True,\n        milestones=[16, 22],\n        gamma=0.1)\n]\n\n# optimizer\noptim_wrapper = dict(\n    type='OptimWrapper',\n    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001))\n\n# Default setting for scaling LR automatically\n#   - `enable` means enable scaling LR automatically\n#       or not by default.\n#   - `base_batch_size` = (8 GPUs) x (2 samples per GPU).\nauto_scale_lr = dict(enable=False, base_batch_size=16)\n\n/SSDb/sangmin_park/drone-mmdetection-jm/configs/_base_/default_runtime.py\ndefault_scope = 'mmdet'\n\ndefault_hooks = dict(\n    timer=dict(type='IterTimerHook'),\n    logger=dict(type='LoggerHook', interval=50),\n    param_scheduler=dict(type='ParamSchedulerHook'),\n    checkpoint=dict(type='CheckpointHook', interval=1),\n    sampler_seed=dict(type='DistSamplerSeedHook'),\n    visualization=dict(type='DetVisualizationHook'))\n\nenv_cfg = dict(\n    cudnn_benchmark=False,\n    mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0),\n    dist_cfg=dict(backend='nccl'),\n)\n\nvis_backends = [dict(type='LocalVisBackend')]\nvisualizer = dict(\n    type='DetLocalVisualizer', vis_backends=vis_backends, name='visualizer')\nlog_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)\n\nlog_level = 'INFO'\nload_from = None\nresume = False\n\n/SSDb/sangmin_park/drone-mmdetection-jm/custom_configs/DELIVER/deliver_dataset.py\n# Default config for DELIVER detection dataset\n# custom_configs/DELIVER/deliver_dataset.py\nimport os\n_base_ = [\n    '../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path\n    '../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  \n]\n\n# Dataset basic info\ndataset_type = 'DELIVERDetectionDataset'\ndata_root = '/mnt/nvme/workspace/AnySeg/data/DELIVER/'  # Added trailing slash\nbackend_args = None\nclasses = ('Vehicle', 'Human')\n\n# Data preprocessor\ndata_preprocessor = dict(\n    type='ListDataPreprocessor',\n    mean_=[\n        [0.485, 0.456, 0.406],       # RGB (ImageNet - same as DELIVER)\n        [0.0, 0.0, 0.0],             # Depth  \n        [0.0, 0.0, 0.0],             # Event\n        [0.0, 0.0, 0.0]              # LiDAR\n    ],\n    std_=[\n        [0.229, 0.224, 0.225],       # RGB (ImageNet - same as DELIVER)\n        [1.0, 1.0, 1.0],             # Depth\n        [1.0, 1.0, 1.0],             # Event\n        [1.0, 1.0, 1.0]              # LiDAR\n    ],\n    pad_size_divisor=32\n)\n\ntrain_pipeline = [\n    dict(type='LoadDELIVERImages'),\n    dict(type='LoadAnnotations', with_bbox=True),\n    dict(\n        type='DELIVERResize', \n        img_scale=(512, 512), \n        keep_ratio=True,\n        bbox_format='xywh'  # \U0001F525 xywh format 명시\n    ),\n    dict(\n        type='DELIVERRandomFlip', \n        prob=0.5,\n        bbox_format='xywh'  # \U0001F525 xywh format 명시\n    ),\n    dict(type='PackDELIVERDetInputs')\n]\n\ntest_pipeline = [\n    dict(type='LoadDELIVERImages'),\n    dict(\n        type='DELIVERResize', \n        img_scale=(512, 512), \n        keep_ratio=True,\n        bbox_format='xywh'  # \U0001F525 xywh format 명시\n    ),\n    dict(type='PackDELIVERDetInputs')\n]\n\n# Dataset configs\ntrain_dataloader = dict(\n    batch_size=8,\n    num_workers=2,\n    persistent_workers=True,\n    sampler=dict(type='DefaultSampler', shuffle=True),\n    dataset=dict(\n        type=dataset_type,\n        data_root=data_root,\n        ann_file='coco_train_xywh.json',\n        data_prefix=dict(img=''),\n        filter_cfg=dict(filter_empty_gt=True, min_size=32),\n        pipeline=train_pipeline,\n        metainfo=dict(\n            classes=classes,\n            palette=[(220, 20, 60), (119, 11, 32)]\n        )\n    ),\n)\n\nval_dataloader = dict(\n    batch_size=1,\n    num_workers=2,\n    persistent_workers=True,\n    drop_last=False,\n    sampler=dict(type='DefaultSampler', shuffle=False),\n    dataset=dict(\n        type=dataset_type,\n        data_root=data_root,\n        ann_file='coco_val_xywh.json',\n        data_prefix=dict(img=''),  # Fixed: same as train\n        test_mode=True,\n        pipeline=test_pipeline,\n        metainfo=dict(\n            classes=classes,\n            palette=[(220, 20, 60), (119, 11, 32)]\n        )\n    ),\n)\n\ntest_dataloader = val_dataloader\n\n# Evaluation settings  \nval_evaluator = dict(\n    type='CocoMetric',\n    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),  # Fixed: consistent with dataset\n    metric='bbox',\n    format_only=False\n)\n\ntest_evaluator = val_evaluator\n\n# Optimizer settings\noptim_wrapper = dict(\n    type='OptimWrapper',\n    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001),\n    clip_grad=dict(max_norm=5, norm_type=2)\n)\n\n# Learning rate schedule\nparam_scheduler = [\n    dict(\n        type='LinearLR', start_factor=0.001, by_epoch=False, begin=0, end=500\n    ),\n    dict(\n        type='MultiStepLR',\n        begin=0,\n        end=24,  # Updated for 2x schedule\n        by_epoch=True,\n        milestones=[16, 22],  # Updated for 2x schedule\n        gamma=0.1\n    )\n]\n\n# Training settings\ntrain_cfg = dict(type='EpochBasedTrainLoop', max_epochs=24, val_interval=1)  # Updated for 2x\nval_cfg = dict(type='ValLoop')\ntest_cfg = dict(type='TestLoop')\n\n# Runtime settings\ndefault_hooks = dict(\n    timer=dict(type='IterTimerHook'),\n    logger=dict(type='LoggerHook', interval=50),\n    param_scheduler=dict(type='ParamSchedulerHook'),\n    checkpoint=dict(type='CheckpointHook', interval=1, save_best='coco/bbox_mAP'),\n    sampler_seed=dict(type='DistSamplerSeedHook'),\n    visualization=dict(type='DetVisualizationHook')\n)\n\ncustom_hooks = [\n    dict(\n        type='WandbHook',\n        init_kwargs=dict(\n            project='geminifusion_1',\n            name='hinton-deliver_geminifusion_rcnn_lr0.01',\n            config=dict(lr=0.01, batch_size=4, epochs=24)\n        ),\n        interval=50,\n        log_checkpoint=False,\n        log_checkpoint_metadata=True,\n        num_eval_images=10\n    )\n]\n\n# Visualization settings\nvis_backends = [dict(type='LocalVisBackend')]\nvisualizer = dict(\n    type='DetLocalVisualizer', \n    vis_backends=vis_backends, \n    name='visualizer'\n)\n\n# Logging\nlog_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)\nlog_level = 'INFO'\nload_from = None\nresume = False\n\n# Random seed\nrandomness = dict(seed=0, deterministic=False)\n/SSDb/sangmin_park/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_geminifusion_rcnn_lr0.01.py\n# geminifusion_rcnn.py\n\n# CMNeXt Detection with RCNN detector\n# custom_configs/DELIVER/deliver_cmnext_rcnn.py\nimport os\n_base_ = [\n    './deliver_dataset.py'  # Inherit dataset config\n]\n\ndata_root= '/SSDb/jemo_maeng/dset/DELIVER'\n\n# Model settings\nmodel = dict(\n    type='FasterRCNN',\n    data_preprocessor=_base_.data_preprocessor,  # This comes from _base_\n    backbone=dict(\n        type='GeminiFusion',\n        # variant='B2',\n        backbone='GeminiFusion-B2',\n        modals=['rgb', 'depth', 'event', 'lidar'],\n        out_indices=(0, 1, 2, 3),\n        # frozen_stages=-1,\n        # pretrained='/mnt/nvme/workspace/drone-mmdetection-jm/ckpts/mit_b2.pth'\n        # num_modal=4,\n        # out_indices=(0, 1, 2, 3),\n        frozen_stages=-1,\n        # adapter_type='every_one',    \n\n        # pretrained='/mnt/nvme/workspace/drone-mmdetection-jm/ckpts/mit_b2.pth'\n    ),\n    neck=dict(\n        type='FPN',  # MMDetection 표준 FPN 사용\n        in_channels=[64, 128, 320, 512],\n        # in_channels=[64, 128],\n        out_channels=256,\n        num_outs=5\n    ),\n    rpn_head=dict(\n        type='RPNHead',\n        in_channels=256,\n        feat_channels=256,\n        anchor_generator=dict(\n            type='AnchorGenerator',  # 32 16 8 4 \n            # scales=[8],\n            scales=[2, 4, 8, 16],\n            ratios=[0.5, 1.0, 2.0],\n            strides=[4, 8, 16, 32, 64]\n        ),\n        bbox_coder=dict(\n            type='DeltaXYWHBBoxCoder',\n            target_means=[.0, .0, .0, .0],\n            target_stds=[1.0, 1.0, 1.0, 1.0]\n        ),\n        loss_cls=dict(\n            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0\n        ),\n        loss_bbox=dict(type='L1Loss', loss_weight=1.0)\n    ),\n    roi_head=dict(\n        type='StandardRoIHead',\n        bbox_roi_extractor=dict(\n            type='SingleRoIExtractor',\n            roi_layer=dict(type='RoIAlign', output_size=7, sampling_ratio=0),\n            out_channels=256,\n            featmap_strides=[4, 8, 16, 32]\n        ),\n        bbox_head=dict(\n            type='Shared2FCBBoxHead',\n            in_channels=256,\n            fc_out_channels=1024,\n            roi_feat_size=7,\n            num_classes=2,  # Vehicle, Human\n            bbox_coder=dict(\n                type='DeltaXYWHBBoxCoder',\n                target_means=[0., 0., 0., 0.],\n                target_stds=[0.1, 0.1, 0.2, 0.2]\n            ),\n            reg_class_agnostic=False,\n            loss_cls=dict(\n                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0\n            ),\n            loss_bbox=dict(type='L1Loss', loss_weight=1.0)\n        )\n    ),\n    # Training config\n    train_cfg=dict(\n        rpn=dict(\n            assigner=dict(\n                type='MaxIoUAssigner',\n                pos_iou_thr=0.7,\n                neg_iou_thr=0.3,\n                min_pos_iou=0.3,\n                match_low_quality=True,\n                ignore_iof_thr=-1\n            ),\n            sampler=dict(\n                type='RandomSampler',\n                num=256,\n                pos_fraction=0.5,\n                neg_pos_ub=-1,\n                add_gt_as_proposals=False\n            ),\n            allowed_border=-1,\n            pos_weight=-1,\n            debug=False\n        ),\n        rpn_proposal=dict(\n            nms_pre=2000,\n            max_per_img=1000,\n            nms=dict(type='nms', iou_threshold=0.7),\n            min_bbox_size=0\n        ),\n        rcnn=dict(\n            assigner=dict(\n                type='MaxIoUAssigner',\n                pos_iou_thr=0.5,        # \U0001F525 0.5 → 0.3\n                neg_iou_thr=0.5,        # \U0001F525 0.5 → 0.1  \n                min_pos_iou=0.5,        # \U0001F525 0.5 → 0.1\n                match_low_quality=False, # \U0001F525 False → True\n                ignore_iof_thr=-1\n            ),\n            sampler=dict(\n                type='RandomSampler',\n                num=512,\n                pos_fraction=0.25,\n                neg_pos_ub=-1,\n                add_gt_as_proposals=True\n            ),\n            pos_weight=-1,\n            debug=False\n        )\n    ),\n    # Testing config\n    test_cfg=dict(\n        rpn=dict(\n            nms_pre=1000,\n            max_per_img=1000,\n            nms=dict(type='nms', iou_threshold=0.7),\n            min_bbox_size=0\n        ),\n        rcnn=dict(\n            score_thr=0.05,\n            nms=dict(type='nms', iou_threshold=0.5),\n            max_per_img=100\n        )\n    )\n)\n\ntrain_dataloader = dict(\n    batch_size=4,\n    num_workers=2,\n    persistent_workers=True,\n    sampler=dict(type='DefaultSampler', shuffle=True),\n    dataset=dict(\n        data_root=data_root,\n        ann_file='coco_train_xywh.json',\n    ),\n)\n\nval_dataloader = dict(\n    batch_size=1,\n    num_workers=2,\n    persistent_workers=True,\n    drop_last=False,\n    sampler=dict(type='DefaultSampler', shuffle=False),\n    dataset=dict(\n        data_root=data_root,\n        ann_file='coco_val_xywh.json',\n    ),\n)\n\ntest_dataloader = val_dataloader\n\n# Evaluation settings  \nval_evaluator = dict(\n    type='CocoMetric',\n    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),  # Fixed: consistent with dataset\n    metric='bbox',\n    format_only=False\n)\n\noptim_wrapper = dict(\n    type='OptimWrapper',\n    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),\n    clip_grad=dict(max_norm=5, norm_type=2),\n    accumulative_counts=4\n)\n\n\n# Experiment name for logging\nexperiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01'\n\n# Override work_dir if needed\nwork_dir = f'./work_dirs/{experiment_name}'"
+_wandb:
+    value:
+        cli_version: 0.20.1
+        m: []
+        python_version: 3.8.12
+        t:
+            "1":
+                - 1
+                - 5
+                - 37
+                - 38
+                - 41
+                - 49
+                - 53
+                - 63
+                - 82
+            "2":
+                - 1
+                - 5
+                - 37
+                - 38
+                - 41
+                - 49
+                - 53
+                - 63
+                - 82
+            "3":
+                - 13
+                - 16
+                - 55
+            "4": 3.8.12
+            "5": 0.20.1
+            "12": 0.20.1
+            "13": linux-x86_64

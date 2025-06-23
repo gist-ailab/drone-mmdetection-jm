@@ -31,8 +31,16 @@ class PackDELIVERDetInputs:
                     bboxes.append(instance['bbox'])
                 if 'bbox_label' in instance:
                     labels.append(instance['bbox_label'])
-            if bboxes:                          # Ensure bboxes are float32 tensors
-                gt_instances.bboxes = torch.tensor(bboxes, dtype=torch.float32)            
+            # if bboxes:                          # Ensure bboxes are float32 tensors
+            #     gt_instances.bboxes = torch.tensor(bboxes, dtype=torch.float32)      
+            if bboxes:  # Ensure bboxes are float32 tensors
+                bboxes = torch.tensor(bboxes, dtype=torch.float32)
+
+                # 🔥 ADD THIS: Convert from xywh → xyxy
+                bboxes[:, 2] = bboxes[:, 0] + bboxes[:, 2]  # x2 = x + w
+                bboxes[:, 3] = bboxes[:, 1] + bboxes[:, 3]  # y2 = y + h
+
+                gt_instances.bboxes = bboxes
             if labels:                  # Ensure labels are long tensors    
                 gt_instances.labels = torch.tensor(labels, dtype=torch.long)
         
@@ -110,15 +118,20 @@ class PackDELIVERDetInputs:
         if 'modality_paths' in results:
             metainfo['modality_paths'] = results['modality_paths']
         
-        if 'img_path' in results and isinstance(results['img_path'], list):
-            metainfo['img_path'] = results['img_path']
-        elif 'modality_paths' in results:
-            metainfo['img_path'] = [
-                results['modality_paths']['rgb'],
-                results['modality_paths']['depth'],
-                results['modality_paths']['event'],
-                results['modality_paths']['lidar']
-            ]
+        # if 'img_path' in results and isinstance(results['img_path'], list):
+        #     metainfo['img_path'] = results['img_path']
+        # elif 'modality_paths' in results:
+        #     metainfo['img_path'] = [
+        #         results['modality_paths']['rgb'],
+        #         results['modality_paths']['depth'],
+        #         results['modality_paths']['event'],
+        #         results['modality_paths']['lidar']
+        #     ]
         
+        if 'img_path' in results:
+            metainfo['img_path'] = str(results['img_path']).strip()
+        elif 'modality_paths' in results:
+            metainfo['img_path'] = str(results['modality_paths']['rgb']).strip()
+
         return metainfo
 

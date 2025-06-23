@@ -188,7 +188,7 @@ optim_wrapper = dict(
 
 
 # Experiment name for logging
-experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01_2'
+experiment_name = 'deliver_cmnext_b2_faster_rcnn_2x_lr0.01_feature_fusion'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

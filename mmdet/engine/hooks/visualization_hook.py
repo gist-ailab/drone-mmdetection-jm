@@ -96,6 +96,7 @@ class DetVisualizationHook(Hook):
 
         # Visualize only the first data
         img_path = outputs[0].img_path
+        img_path = str(img_path).strip()
         img_bytes = get(img_path, backend_args=self.backend_args)
         img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -132,6 +133,7 @@ class DetVisualizationHook(Hook):
             self._test_index += 1
 
             img_path = data_sample.img_path
+            img_path = str(img_path).strip()
             img_bytes = get(img_path, backend_args=self.backend_args)
             img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -294,6 +296,7 @@ class TrackVisualizationHook(Hook):
             step (int): The index of the current image.
         """
         img_path = img_data_sample.img_path
+        img_path = str(img_path).strip()
         img_bytes = get(img_path, backend_args=self.backend_args)
         img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -370,6 +373,7 @@ class GroundingVisualizationHook(DetVisualizationHook):
             self._test_index += 1
 
             img_path = data_sample.img_path
+            img_path = str(img_path).strip()
             img_bytes = get(img_path, backend_args=self.backend_args)
             img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 

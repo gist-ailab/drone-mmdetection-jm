@@ -97,6 +97,10 @@ class GeminiFusion(BaseModule):
         self._freeze_stages()
 
     def forward(self, x: List[Tensor]) -> Tuple[Tensor]:
+
+        # print(f"[DEBUG] number of input tensors: {len(x)}")
+        # for i, t in enumerate(x):
+        #     print(f" - x[{i}].shape = {t.shape}")
         """Forward function for backbone.
         
         Args:
@@ -114,8 +118,8 @@ class GeminiFusion(BaseModule):
         # For detection, we typically use the first branch or ensemble them
         # Here we'll use the first branch and return the specified indices
         if isinstance(x_modals, (list, tuple)) and len(x_modals) >= 1:
-            # Use first branch features
-            features = x_modals[0]
+            # Use second branch features
+            features = x_modals[1]
         else:
             features = x_modals
             

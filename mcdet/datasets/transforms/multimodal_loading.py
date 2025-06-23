@@ -61,7 +61,15 @@ class LoadDELIVERImages(LoadImageFromFile):
         
         # Store as list of images
         results['img'] = modality_images
-        results['img_path'] = [modality_paths[mod] for mod in ['rgb', 'depth', 'event', 'lidar']]
+        # results['img_path'] = [modality_paths[mod] for mod in ['rgb', 'depth', 'event', 'lidar']]
+        # results['img_path'] = modality_paths['rgb']
+        # print(f"Loaded images: {modality_paths}")
+        # print(f"rgb_image_path:" f"{str(modality_paths['rgb'])}")
+        # # results['img_path'] = str(modality_paths['rgb'])
+
+        img_path = modality_paths['rgb']
+        results['img_path'] = str(img_path).strip()
+
         results['img_shape'] = modality_images[0].shape[:2]  
         results['ori_shape'] = results['img_shape']  
 
