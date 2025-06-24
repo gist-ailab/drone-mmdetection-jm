@@ -10,7 +10,7 @@ _base_ = [
 dataset_type = 'DELIVERDetectionDataset'
 data_root = '/SSDb/jemo_maeng/dset/DELIVER/'  # Added trailing slash
 backend_args = None
-classes = ('Vehicle', 'Human')
+classes = ('Human', 'Vehicle')
 
 # Data preprocessor
 data_preprocessor = dict(
