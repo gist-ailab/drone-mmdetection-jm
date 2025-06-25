@@ -105,7 +105,7 @@ class CMNextBaseModel(BaseModule):
     """Base model wrapper for CMNext backbone."""
     
     def __init__(self, 
-                 backbone: str = 'MiT-B0', 
+                 backbone: str = 'CMNeXt-B0', 
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  init_cfg: Optional[dict] = None) -> None:
         super().__init__(init_cfg=init_cfg)
@@ -166,6 +166,7 @@ class CMNextBackbone(BaseModule):
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  out_indices: Tuple[int] = (0, 1, 2, 3),
                  frozen_stages: int = -1,
+                 freeze_fusion_with_stages: bool = True,
                  norm_eval: bool = False,
                  pretrained: Optional[str] = None,
                  init_cfg: Optional[dict] = None):
@@ -205,19 +206,119 @@ class CMNextBackbone(BaseModule):
         
         self._freeze_stages()
     
-    def _freeze_stages(self):
-        """Freeze stages according to frozen_stages."""
-        if self.frozen_stages >= 0:
-            # Freeze patch embedding
-            if hasattr(self.cmnext_model.backbone, 'patch_embed'):
-                for param in self.cmnext_model.backbone.patch_embed.parameters():
-                    param.requires_grad = False
+    def _freeze_stages(self, freeze_fusion_with_stages: bool = True):
+        """Freeze specified stages.
+        
+        frozen_stages options:
+        -1:  No freezing (전체 unfreeze)
+         0:  Freeze stage 0 (patch_embed1, block1, norm1 + extra modules + 해당 FRM/FFM)
+         1:  Freeze stages 0-1 (patch_embed1-2, block1-2, norm1-2 + extra modules + 해당 FRM/FFM)
+         2:  Freeze stages 0-2 (patch_embed1-3, block1-3, norm1-3 + extra modules + 해당 FRM/FFM)
+         3:  Freeze stages 0-3 (patch_embed1-4, block1-4, norm1-4 + extra modules + 해당 FRM/FFM)
+         999: Freeze all including FRMs/FFMs (완전 전체 freeze)
+         
+        Args:
+            freeze_fusion_with_stages: If True, freeze FRM/FFM along with corresponding stages
+        """
+        backbone = self.cmnext_model.backbone
+        
+        if self.frozen_stages == -1:
+            # Unfreeze all - 모든 파라미터를 trainable로 설정
+            print("🔥 Unfreezing all stages")
+            for param in backbone.parameters():
+                param.requires_grad = True
+            return
+
+        if self.frozen_stages == 999:
+            # Freeze everything completely
+            print("🧊 Freezing ALL parameters (including FRMs/FFMs)")
+            for param in backbone.parameters():
+                param.requires_grad = False
+            backbone.eval()
+            return
+        
+        # Stage별 freeze 수행
+        num_stages = 4  # CMNext has 4 stages
+        
+        for stage_idx in range(min(self.frozen_stages + 1, num_stages)):
+            print(f"🧊 Freezing stage {stage_idx}")
             
-            # Freeze stages
-            for i in range(self.frozen_stages + 1):
-                if hasattr(self.cmnext_model.backbone, f'block{i+1}'):
-                    for param in getattr(self.cmnext_model.backbone, f'block{i+1}').parameters():
+            # Freeze main patch embedding
+            patch_embed_name = f"patch_embed{stage_idx + 1}"
+            if hasattr(backbone, patch_embed_name):
+                patch_embed = getattr(backbone, patch_embed_name)
+                patch_embed.eval()
+                for param in patch_embed.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen {patch_embed_name}")
+            
+            # Freeze main transformer blocks
+            block_name = f"block{stage_idx + 1}"
+            if hasattr(backbone, block_name):
+                block = getattr(backbone, block_name)
+                block.eval()
+                for param in block.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen {block_name}")
+            
+            # Freeze main layer norm
+            norm_name = f"norm{stage_idx + 1}"
+            if hasattr(backbone, norm_name):
+                norm = getattr(backbone, norm_name)
+                norm.eval()
+                for param in norm.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen {norm_name}")
+            
+            # Freeze extra modules (multimodal parts)
+            if hasattr(backbone, 'extra_downsample_layers') and stage_idx < len(backbone.extra_downsample_layers):
+                extra_downsample = backbone.extra_downsample_layers[stage_idx]
+                extra_downsample.eval()
+                for param in extra_downsample.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen extra_downsample_layers[{stage_idx}]")
+            
+            # Freeze extra blocks
+            extra_block_name = f"extra_block{stage_idx + 1}"
+            if hasattr(backbone, extra_block_name):
+                extra_block = getattr(backbone, extra_block_name)
+                extra_block.eval()
+                for param in extra_block.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen {extra_block_name}")
+            
+            # Freeze extra norms
+            extra_norm_name = f"extra_norm{stage_idx + 1}"
+            if hasattr(backbone, extra_norm_name):
+                extra_norm = getattr(backbone, extra_norm_name)
+                extra_norm.eval()
+                for param in extra_norm.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen {extra_norm_name}")
+            
+            # Freeze score predictors
+            if hasattr(backbone, 'extra_score_predictor') and stage_idx < len(backbone.extra_score_predictor):
+                score_predictor = backbone.extra_score_predictor[stage_idx]
+                score_predictor.eval()
+                for param in score_predictor.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen extra_score_predictor[{stage_idx}]")
+            
+            # Freeze corresponding FRM and FFM
+            if freeze_fusion_with_stages:
+                if hasattr(backbone, 'FRMs') and stage_idx < len(backbone.FRMs):
+                    frm = backbone.FRMs[stage_idx]
+                    frm.eval()
+                    for param in frm.parameters():
                         param.requires_grad = False
+                    print(f"   - Frozen FRMs[{stage_idx}]")
+                
+                if hasattr(backbone, 'FFMs') and stage_idx < len(backbone.FFMs):
+                    ffm = backbone.FFMs[stage_idx]
+                    ffm.eval()
+                    for param in ffm.parameters():
+                        param.requires_grad = False
+                    print(f"   - Frozen FFMs[{stage_idx}]")
     
     def forward(self, x: List[torch.Tensor]) -> Tuple[torch.Tensor]:
         """Forward pass of CMNext backbone.

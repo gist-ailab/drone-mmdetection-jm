@@ -14,7 +14,7 @@ from mcdet import *
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     # parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_sharednone.py', help='train config file path')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_e50.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-sejong2504_cmnext_rcnn_lr0.01_ep50.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
@@ -80,7 +80,6 @@ def main():
         # use config filename as default work_dir if cfg.work_dir is None
         cfg.work_dir = osp.join('./work_dirs',
                                 osp.splitext(osp.basename(args.config))[0])
-
     print(cfg.pretty_text)
 
     # enable automatic-mixed-precision training
@@ -131,3 +130,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+# frame_1741660253.629987.png

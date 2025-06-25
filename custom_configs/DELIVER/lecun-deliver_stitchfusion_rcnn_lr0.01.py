@@ -12,12 +12,11 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='StitchFusionBackbone',
+        backbone='stitchfusion-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=999,
-        freeze_fusion_with_stages=True,
+        frozen_stages=-1,
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -138,7 +137,7 @@ model = dict(
 )
 
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=2,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -174,8 +173,17 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
-    accumulative_counts=4
+    accumulative_counts=8
 )
+
+
+train_cfg = dict(
+    type='EpochBasedTrainLoop', 
+    max_epochs=50, 
+    val_interval=5)
+
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -183,13 +191,14 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='Edited freeze backbone,CMNeXt RCNN with freezed backbone',
+            name='DEBUG- lecun-deliver_stitchfusion_rcnn_lr0.01_0615',
+            tags=['debuggin', 'Stitfusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
         ),
     )
 ]
+
 # ✅ Standard hooks configuration
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
@@ -230,8 +239,10 @@ visualizer = dict(
     name='visualizer'
 )
 
-# Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll_0613'
 
+
+# Experiment name for logging
+# experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
+experiment_name = 'lecun-deliver_stitchfusion_rcnn_lr0.01_0615'
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

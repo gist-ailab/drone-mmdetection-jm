@@ -1,0 +1,5 @@
+[default]
+entity = maengjemo-gist
+project = DELIVER
+base_url = https://api.wandb.ai
+

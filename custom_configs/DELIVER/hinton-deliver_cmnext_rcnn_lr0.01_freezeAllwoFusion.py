@@ -17,7 +17,7 @@ model = dict(
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=999,
-        freeze_fusion_with_stages=True,
+        freeze_fusion_with_stages=False,
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -183,9 +183,9 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze',
+            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze_woFusion',
             tags=['CMNeXt', 'RCNN', ],
-            notes='Edited freeze backbone,CMNeXt RCNN with freezed backbone',
+            notes='Edited freeze backbone, unfreeze fusion module,CMNeXt RCNN with freezed backbone',
             save_code=True
         ),
     )
@@ -231,7 +231,7 @@ visualizer = dict(
 )
 
 # Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll_0613'
+experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAllwoFusion_0613'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

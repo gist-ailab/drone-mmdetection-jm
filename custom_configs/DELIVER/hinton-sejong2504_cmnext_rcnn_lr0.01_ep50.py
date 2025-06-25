@@ -5,8 +5,10 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root= '/SSDb/jemo_maeng/dset/DELIVER'
-
+data_root= '/ailab_mat2/dataset/drone/drone_250610/'
+dataset_type = 'SejongDetectionDataset'
+classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door',
+        'Victim', 'Ally', 'Exit', 'Window', 'Light')
 # Model settings
 model = dict(
     type='FasterRCNN',
@@ -16,8 +18,7 @@ model = dict(
         backbone='CMNeXt-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=999,
-        freeze_fusion_with_stages=True,
+        frozen_stages=-1,
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -60,7 +61,7 @@ model = dict(
             in_channels=256,
             fc_out_channels=1024,
             roi_feat_size=7,
-            num_classes=2,  # Vehicle, Human
+            num_classes=10,  # Vehicle, Human
             bbox_coder=dict(
                 type='DeltaXYWHBBoxCoder',
                 target_means=[0., 0., 0., 0.],
@@ -143,8 +144,25 @@ train_dataloader = dict(
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
+        type = dataset_type,
         data_root=data_root,
-        ann_file='coco_train_xywh.json',
+        ann_file=f'{data_root}/labels/train.json',
+        data_prefix=dict(img='images'),
+        metainfo = dict(
+            classes = classes,
+            palette= [
+            (220, 20, 60),     # Enemy - Crimson
+            (0, 128, 0),       # LandingMarker - Green
+            (0, 0, 255),       # Obstacle - Blue
+            (255, 140, 0),     # FireExt - Dark Orange
+            (255, 215, 0),     # Door - Gold
+            (255, 0, 255),     # Victim - Magenta
+            (0, 255, 255),     # Ally - Cyan
+            (128, 0, 128),     # Exit - Purple
+            (70, 130, 180),    # Window - Steel Blue
+            (255, 255, 255)    # Light - White
+            ]
+        )
     ),
 )
 
@@ -155,8 +173,25 @@ val_dataloader = dict(
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
+        type = dataset_type,
         data_root=data_root,
-        ann_file='coco_val_xywh.json',
+        ann_file=f'{data_root}/labels/test.json',
+        data_prefix=dict(img='images'),
+        metainfo = dict(
+            classes = classes,
+            palette=[
+            (220, 20, 60),     # Enemy - Crimson
+            (0, 128, 0),       # LandingMarker - Green
+            (0, 0, 255),       # Obstacle - Blue
+            (255, 140, 0),     # FireExt - Dark Orange
+            (255, 215, 0),     # Door - Gold
+            (255, 0, 255),     # Victim - Magenta
+            (0, 255, 255),     # Ally - Cyan
+            (128, 0, 128),     # Exit - Purple
+            (70, 130, 180),    # Window - Steel Blue
+            (255, 255, 255)    # Light - White
+            ]
+        )
     ),
 )
 
@@ -165,10 +200,15 @@ test_dataloader = val_dataloader
 # Evaluation settings  
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'coco_val_xywh.json'),  # Fixed: consistent with dataset
+    ann_file=os.path.join(data_root, 'labels/test.json'),  # Fixed: consistent with dataset
     metric='bbox',
     format_only=False
 )
+train_cfg = dict(
+    type='EpochBasedTrainLoop', 
+    max_epochs=50, 
+    val_interval=5)
+
 
 optim_wrapper = dict(
     type='OptimWrapper',
@@ -177,15 +217,31 @@ optim_wrapper = dict(
     accumulative_counts=4
 )
 
+param_scheduler = [
+    dict(
+        type='LinearLR',
+        start_factor=0.001,
+        by_epoch=False,
+        begin=0,
+        end=500),  # warmup
+    dict(
+        type='CosineAnnealingLR',
+        T_max=100,  # cosine annealing
+        by_epoch=True,
+        begin=10,
+        end=50,
+        eta_min=1e-6)
+]
+
 vis_backends = [
     dict(type='LocalVisBackend'),
     dict(
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='Edited freeze backbone,CMNeXt RCNN with freezed backbone',
+            name='hinton-sejong2504_cmnext_rcnn_lr0.01_ep50',
+            tags=['CMNeXt', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='Custom sejong dataset, CMNeXt RCNN with epoch 50 cosinelr',
             save_code=True
         ),
     )
@@ -230,8 +286,11 @@ visualizer = dict(
     name='visualizer'
 )
 
+
+
+
 # Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll_0613'
+experiment_name = 'sejong2504_cmnext_b2_faster_rcnn_2x_cosinelr0.01_ep50'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

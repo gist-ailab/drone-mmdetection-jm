@@ -6,9 +6,10 @@ from .llvip_dataset import LLVIPRgbtDataset
 from .flir_aligned_coco_dataset import FLIRRgbtCocoDataset
 from .custom_deliver_detection_dataset import DELIVERDetectionDataset
 from .custom_sampler import CustomSampler
+from .custom_sejong_detection_dataset import SejongDetectionDataset
 
 __all__ =[
     'FLIRCatDataset', 'FLIRCatDataset2', 'GISTDataset', 'KaistRgbtCocoDataset', 
     'LLVIPRgbtDataset', 'FLIRRgbtCocoDataset', 'DELIVERDetectionDataset', 
-     'CustomSampler', 
+     'CustomSampler', 'SejongDetectionDataset'
 ]

@@ -1,50 +1,759 @@
-# mcdet/models/backbones/geminifusion.py
+# geminifusion_backbone.py
 
 import torch
-import math
 import torch.nn as nn
-from torch import Tensor
-from collections import OrderedDict
-from typing import Dict, List, Union, Optional, Tuple
+import torch.nn.functional as F
+import torch.nn.init as init
+import functools
+import math
+
+from torch import nn, Tensor
+from functools import partial
+from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 from mmdet.registry import MODELS
 from mmengine.model import BaseModule
-from mmengine.runner import CheckpointLoader
-import functools
-from functools import partial
+from typing import List, Tuple, Optional
 import warnings
-import torch.nn.functional as F
+num_parallel = 2
 
+class ModuleParallel(nn.Module):
+    def __init__(self, module):
+        super(ModuleParallel, self).__init__()
+        self.module = module
 
-def load_geminifusion_model(model, model_file):
-    """Load pretrained model for multimodal GeminiFusion."""
-    # load raw state_dict
-    if isinstance(model_file, str):
-        raw_state_dict = torch.load(model_file, map_location=torch.device('cpu'))
-        if 'model' in raw_state_dict.keys():
-            raw_state_dict = raw_state_dict['model']
-    else:
-        raw_state_dict = model_file
+    def forward(self, x_parallel):
+        return [self.module(x) for x in x_parallel]
     
-    state_dict = {}
-    for k, v in raw_state_dict.items():
-        if k.find('patch_embed') >= 0:
-            state_dict[k] = v
-        elif k.find('block') >= 0:
-            state_dict[k] = v
-        elif k.find('norm') >= 0:
-            state_dict[k] = v
+class LayerNormParallel(nn.Module):
+    def __init__(self, num_features, num_modal=num_parallel):
+        super(LayerNormParallel, self).__init__()
+        for i in range(num_modal):
+            setattr(self, "ln_" + str(i), nn.LayerNorm(num_features, eps=1e-6))
 
-    msg = model.load_state_dict(state_dict, strict=False)
-    print(f"[GeminiFusion] Pretrained model loaded: {msg}")
-    del state_dict
+    def forward(self, x_parallel):
+        return [getattr(self, "ln_" + str(i))(x) for i, x in enumerate(x_parallel)]
+    
+
+class Mlp(nn.Module):
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        drop=0.0,
+    ):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = ModuleParallel(nn.Linear(in_features, hidden_features))
+        self.dwconv = DWConv(hidden_features)
+        self.act = ModuleParallel(act_layer())
+        self.fc2 = ModuleParallel(nn.Linear(hidden_features, out_features))
+        self.drop = ModuleParallel(nn.Dropout(drop))
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        x = self.fc1(x)
+        x = [self.dwconv(x[0], H, W), self.dwconv(x[1], H, W)]
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+
+class Mlp_2(nn.Module):
+    """Multilayer perceptron."""
+
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        drop=0.0,
+    ):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+
+class Attention(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        qk_scale=None,
+        attn_drop=0.0,
+        proj_drop=0.0,
+        sr_ratio=1,
+        n_heads=8,
+    ):
+        super().__init__()
+        assert (
+            dim % num_heads == 0
+        ), f"dim {dim} should be divided by num_heads {num_heads}."
+
+        self.dim = dim
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim**-0.5
+
+        self.q = ModuleParallel(nn.Linear(dim, dim, bias=qkv_bias))
+        self.kv = ModuleParallel(nn.Linear(dim, dim * 2, bias=qkv_bias))
+        self.attn_drop = ModuleParallel(nn.Dropout(attn_drop))
+        self.proj = ModuleParallel(nn.Linear(dim, dim))
+        self.proj_drop = ModuleParallel(nn.Dropout(proj_drop))
+
+        self.sr_ratio = sr_ratio
+        if sr_ratio > 1:
+            self.sr = ModuleParallel(
+                nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+            )
+            self.norm = LayerNormParallel(dim)
+
+        self.cross_heads = n_heads
+        self.cross_attn_0_to_1 = nn.MultiheadAttention(
+            dim, self.cross_heads, dropout=0.0, batch_first=False
+        )
+        self.cross_attn_1_to_0 = nn.MultiheadAttention(
+            dim, self.cross_heads, dropout=0.0, batch_first=False
+        )
+
+        self.relation_judger = nn.Sequential(
+            Mlp_2(dim * 2, dim, dim), torch.nn.Softmax(dim=-1)
+        )
+
+        self.k_noise = nn.Embedding(2, dim)
+        self.v_noise = nn.Embedding(2, dim)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        B, N, C = x[0].shape
+        q = self.q(x)
+        q = [
+            q_.reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+            for q_ in q
+        ]
+
+        if self.sr_ratio > 1:
+            x = [x_.permute(0, 2, 1).reshape(B, C, H, W) for x_ in x]
+            x = self.sr(x)
+            x = [x_.reshape(B, C, -1).permute(0, 2, 1) for x_ in x]
+            x = self.norm(x)
+            kv = self.kv(x)
+            kv = [
+                kv_.reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(
+                    2, 0, 3, 1, 4
+                )
+                for kv_ in kv
+            ]
+        else:
+            kv = self.kv(x)
+            kv = [
+                kv_.reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(
+                    2, 0, 3, 1, 4
+                )
+                for kv_ in kv
+            ]
+        k, v = [kv[0][0], kv[1][0]], [kv[0][1], kv[1][1]]
+
+        attn = [(q_ @ k_.transpose(-2, -1)) * self.scale for (q_, k_) in zip(q, k)]
+        attn = [attn_.softmax(dim=-1) for attn_ in attn]
+        attn = self.attn_drop(attn)
+
+        x = [
+            (attn_ @ v_).transpose(1, 2).reshape(B, N, C)
+            for (attn_, v_) in zip(attn, v)
+        ]
+
+        # cross-attn per batch
+        new_x0 = []
+        new_x1 = []
+        for bs in range(B):
+            ## 1. 0_to_1 cross attn and skip connect
+            q = x[0][bs].unsqueeze(0)
+
+            judger_input = torch.cat(
+                [x[0][bs].unsqueeze(0), x[1][bs].unsqueeze(0)], dim=-1
+            )
+
+            relation_score = self.relation_judger(judger_input)
+
+            noise_k = self.k_noise.weight[0] + q
+            noise_v = self.v_noise.weight[0] + q
+
+            k = torch.cat([noise_k, torch.mul(q, relation_score)], dim=0)
+            v = torch.cat([noise_v, x[1][bs].unsqueeze(0)], dim=0)
+
+            new_x0.append(x[0][bs] + self.cross_attn_0_to_1(q, k, v)[0].squeeze(0))
+
+            ## 2. 1_to_0 cross attn and skip connect
+            q = x[1][bs].unsqueeze(0)
+
+            judger_input = torch.cat(
+                [x[1][bs].unsqueeze(0), x[0][bs].unsqueeze(0)], dim=-1
+            )
+
+            relation_score = self.relation_judger(judger_input)
+
+            noise_k = self.k_noise.weight[1] + q
+            noise_v = self.v_noise.weight[1] + q
+
+            k = torch.cat([noise_k, torch.mul(q, relation_score)], dim=0)
+            v = torch.cat([noise_v, x[0][bs].unsqueeze(0)], dim=0)
+
+            new_x1.append(x[1][bs] + self.cross_attn_1_to_0(q, k, v)[0].squeeze(0))
+
+        new_x0 = torch.stack(new_x0)
+        new_x1 = torch.stack(new_x1)
+        x[0] = new_x0
+        x[1] = new_x1
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        return x
+
+
+class Block(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads,
+        mlp_ratio=4.0,
+        qkv_bias=False,
+        qk_scale=None,
+        drop=0.0,
+        attn_drop=0.0,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=LayerNormParallel,
+        sr_ratio=1,
+        n_heads=8,
+    ):
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+
+        self.attn = Attention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+            sr_ratio=sr_ratio,
+            n_heads=n_heads,
+        )
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+        self.drop_path = (
+            ModuleParallel(DropPath(drop_path))
+            if drop_path > 0.0
+            else ModuleParallel(nn.Identity())
+        )
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        B = x[0].shape[0]
+
+        f = self.drop_path(self.attn(self.norm1(x), H, W))
+        x = [x_ + f_ for (x_, f_) in zip(x, f)]
+        f = self.drop_path(self.mlp(self.norm2(x), H, W))
+        x = [x_ + f_ for (x_, f_) in zip(x, f)]
+
+        return x
+
+
+class OverlapPatchEmbed(nn.Module):
+    """Image to Patch Embedding"""
+
+    def __init__(
+        self,
+        img_size=224,
+        patch_size=7,
+        stride=4,
+        in_chans=3,
+        embed_dim=768,
+        num_modal=2,
+    ):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.H, self.W = img_size[0] // patch_size[0], img_size[1] // patch_size[1]
+        self.num_patches = self.H * self.W
+        self.proj = ModuleParallel(
+            nn.Conv2d(
+                in_chans,
+                embed_dim,
+                kernel_size=patch_size,
+                stride=stride,
+                padding=(patch_size[0] // 2, patch_size[1] // 2),
+            )
+        )
+        self.norm = LayerNormParallel(embed_dim, num_modal=num_modal)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x):
+        x = self.proj(x)
+        _, _, H, W = x[0].shape
+        x = [x_.flatten(2).transpose(1, 2) for x_ in x]
+        x = self.norm(x)
+        return x, H, W
+
+
+mit_settings = {
+    "B0": [[32, 64, 160, 256], [2, 2, 2, 2]],
+    "B1": [[64, 128, 320, 512], [2, 2, 2, 2]],
+    "B2": [[64, 128, 320, 512], [3, 4, 6, 3]],
+    "B3": [[64, 128, 320, 512], [3, 4, 18, 3]],
+    "B4": [[64, 128, 320, 512], [3, 8, 27, 3]],
+    "B5": [[64, 128, 320, 512], [3, 6, 40, 3]],
+}
+
+
+class PredictorConv(nn.Module):
+    def __init__(self, embed_dim=384, num_modals=4):
+        super().__init__()
+        self.num_modals = num_modals
+        self.score_nets = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(embed_dim, embed_dim, 3, 1, 1, groups=(embed_dim)),
+                    nn.Conv2d(embed_dim, 1, 1),
+                    nn.Sigmoid(),
+                )
+                for _ in range(num_modals)
+            ]
+        )
+
+    def forward(self, x, H, W):
+        x_ = []
+        if len(x[0].shape) == 3:
+            B, N, C = x[0].shape
+            for i in range(self.num_modals - 1):
+                input_modal = x[i].view(B, H, W, C).permute(0, 3, 1, 2)
+                x_.append(
+                    self.score_nets[i](input_modal).permute(0, 2, 3, 1).view(B, N, 1)
+                )
+        else:
+            B, H, W, C = x[0].shape
+            for i in range(self.num_modals - 1):
+                input_modal = x[i].permute(0, 3, 1, 2)
+                x_.append(self.score_nets[i](input_modal).permute(0, 2, 3, 1))
+        return x_
+
+class DWConv(nn.Module):
+    def __init__(self, dim=768):
+        super(DWConv, self).__init__()
+        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+
+    def forward(self, x, H, W):
+        B, N, C = x.shape
+        x = x.transpose(1, 2).view(B, C, H, W)
+        x = self.dwconv(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        return x
+
+@MODELS.register_module()
+class GeminiFusionBasemodel(BaseModule):
+    def __init__(
+        self,
+        backbone="B0",
+        modals=["rgb", "depth", "event", "lidar"],
+        img_size=224,
+        patch_size=4,
+        in_chans=3,
+        num_classes=1000,
+        num_heads=[1, 2, 5, 8],
+        mlp_ratios=[4, 4, 4, 4],
+        sr_ratios=[8, 4, 2, 1],
+        qkv_bias=True,
+        qk_scale=None,
+        norm_layer=LayerNormParallel,
+        drop_rate=0.0,
+        attn_drop_rate=0.0,
+        drop_path_rate=0.0,
+        n_heads=8,
+        num_modal=4,
+    ):
+        super().__init__()
+
+        assert (
+            backbone in mit_settings.keys()
+        ), f"Model name should be in {list(mit_settings.keys())}"
+        embed_dims, depths = mit_settings[backbone]
+        self.num_modals = len(modals)
+        self.num_classes = num_classes
+        self.embed_dims, self.depths = embed_dims, depths
+
+        self.patch_embed1 = OverlapPatchEmbed(
+            img_size=img_size,
+            patch_size=7,
+            stride=4,
+            in_chans=in_chans,
+            embed_dim=embed_dims[0],
+            num_modal=num_modal,
+        )
+        self.patch_embed2 = OverlapPatchEmbed(
+            img_size=img_size // 4,
+            patch_size=3,
+            stride=2,
+            in_chans=embed_dims[0],
+            embed_dim=embed_dims[1],
+            num_modal=num_modal,
+        )
+        self.patch_embed3 = OverlapPatchEmbed(
+            img_size=img_size // 8,
+            patch_size=3,
+            stride=2,
+            in_chans=embed_dims[1],
+            embed_dim=embed_dims[2],
+            num_modal=num_modal,
+        )
+        self.patch_embed4 = OverlapPatchEmbed(
+            img_size=img_size // 16,
+            patch_size=3,
+            stride=2,
+            in_chans=embed_dims[2],
+            embed_dim=embed_dims[3],
+            num_modal=num_modal,
+        )
+
+        # transformer encoder
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        cur = 0
+        self.block1 = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dims[0],
+                    num_heads=num_heads[0],
+                    mlp_ratio=mlp_ratios[0],
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[cur + i],
+                    norm_layer=norm_layer,
+                    sr_ratio=sr_ratios[0],
+                    n_heads=n_heads,
+                )
+                for i in range(depths[0])
+            ]
+        )
+        self.norm1 = norm_layer(embed_dims[0])
+
+        cur += depths[0]
+        self.block2 = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dims[1],
+                    num_heads=num_heads[1],
+                    mlp_ratio=mlp_ratios[1],
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[cur + i],
+                    norm_layer=norm_layer,
+                    sr_ratio=sr_ratios[1],
+                    n_heads=n_heads,
+                )
+                for i in range(depths[1])
+            ]
+        )
+        self.norm2 = norm_layer(embed_dims[1])
+
+        cur += depths[1]
+        self.block3 = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dims[2],
+                    num_heads=num_heads[2],
+                    mlp_ratio=mlp_ratios[2],
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[cur + i],
+                    norm_layer=norm_layer,
+                    sr_ratio=sr_ratios[2],
+                    n_heads=n_heads,
+                )
+                for i in range(depths[2])
+            ]
+        )
+        self.norm3 = norm_layer(embed_dims[2])
+
+        cur += depths[2]
+        self.block4 = nn.ModuleList(
+            [
+                Block(
+                    dim=embed_dims[3],
+                    num_heads=num_heads[3],
+                    mlp_ratio=mlp_ratios[3],
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[cur + i],
+                    norm_layer=norm_layer,
+                    sr_ratio=sr_ratios[3],
+                    n_heads=n_heads,
+                )
+                for i in range(depths[3])
+            ]
+        )
+        self.norm4 = norm_layer(embed_dims[3])
+
+        if self.num_modals > 2:
+            self.extra_score_predictor = nn.ModuleList(
+                [
+                    PredictorConv(embed_dims[i], self.num_modals)
+                    for i in range(len(depths))
+                ]
+            )
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def reset_drop_path(self, drop_path_rate):
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depths))]
+        cur = 0
+        for i in range(self.depths[0]):
+            self.block1[i].drop_path.drop_prob = dpr[cur + i]
+
+        cur += self.depths[0]
+        for i in range(self.depths[1]):
+            self.block2[i].drop_path.drop_prob = dpr[cur + i]
+
+        cur += self.depths[1]
+        for i in range(self.depths[2]):
+            self.block3[i].drop_path.drop_prob = dpr[cur + i]
+
+        cur += self.depths[2]
+        for i in range(self.depths[3]):
+            self.block4[i].drop_path.drop_prob = dpr[cur + i]
+
+    def freeze_patch_emb(self):
+        self.patch_embed1.requires_grad = False
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {
+            "pos_embed1",
+            "pos_embed2",
+            "pos_embed3",
+            "pos_embed4",
+            "cls_token",
+        }  # has pos_embed may be better
+
+    def get_classifier(self):
+        return self.head
+
+    def reset_classifier(self, num_classes, global_pool=""):
+        self.num_classes = num_classes
+        self.head = (
+            nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        )
+
+    def forward_features(self, x):
+        B = x[0].shape[0]
+        outs0, outs1 = [], []
+
+        # stage 1
+        x, H, W = self.patch_embed1(x)
+        if self.num_modals > 2:
+            x_ext = x[1:]
+            x_f = self.tokenselect(x_ext, self.extra_score_predictor[0], H, W)
+            x = [x[0], x_f]
+
+        for i, blk in enumerate(self.block1):
+            x = blk(x, H, W)
+        x = self.norm1(x)
+        x = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() for x_ in x]
+        outs0.append(x[0])
+        outs1.append(x[1])
+        if self.num_modals > 2:
+            x1_f = x[1]
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext]
+            x = [x[0]] + x_ext
+        # stage 2
+
+        x, H, W = self.patch_embed2(x)
+        if self.num_modals > 2:
+            x_ext = x[1:]
+            x_f = self.tokenselect(x_ext, self.extra_score_predictor[1], H, W)
+            x = [x[0], x_f]
+
+        for i, blk in enumerate(self.block2):
+            x = blk(x, H, W)
+        x = self.norm2(x)
+        x = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() for x_ in x]
+        outs0.append(x[0])
+        outs1.append(x[1])
+        if self.num_modals > 2:
+            x1_f = x[1]
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext]
+            x = [x[0]] + x_ext
+        # stage 3
+
+        x, H, W = self.patch_embed3(x)
+        if self.num_modals > 2:
+            x_ext = x[1:]
+            x_f = self.tokenselect(x_ext, self.extra_score_predictor[2], H, W)
+            x = [x[0], x_f]
+
+        for i, blk in enumerate(self.block3):
+            x = blk(x, H, W)
+        x = self.norm3(x)
+        x = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() for x_ in x]
+        outs0.append(x[0])
+        outs1.append(x[1])
+        if self.num_modals > 2:
+            x1_f = x[1]
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext]
+            x = [x[0]] + x_ext
+        # stage 4
+
+        x, H, W = self.patch_embed4(x)
+        if self.num_modals > 2:
+            x_ext = x[1:]
+            x_f = self.tokenselect(x_ext, self.extra_score_predictor[3], H, W)
+            x = [x[0], x_f]
+
+        for i, blk in enumerate(self.block4):
+            x = blk(x, H, W)
+        x = self.norm4(x)
+        x = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous() for x_ in x]
+        outs0.append(x[0])
+        outs1.append(x[1])
+
+        return [outs0, outs1]
+
+    def tokenselect(self, x_ext, module, H, W):
+        x_scores = module(x_ext, H, W)
+        for i in range(len(x_ext)):
+            x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
+        x_f = functools.reduce(torch.max, x_ext)
+        return x_f
+
+    # def forward(self, x):
+    #     outs0, outs1 = self.forward_features(x)
+    #     return outs0
+
+    def forward(self, x):
+        x = self.forward_features(x)
+        return x
+
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
-    # Cut & paste from PyTorch official master until it's in a few official releases - RW
-    # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
     def norm_cdf(x):
-        # Computes standard normal cumulative distribution function
         return (1. + math.erf(x / math.sqrt(2.))) / 2.
 
     if (mean < a - 2 * std) or (mean > b + 2 * std):
@@ -53,449 +762,123 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
                       stacklevel=2)
 
     with torch.no_grad():
-        # Values are generated by using a truncated uniform distribution and
-        # then using the inverse CDF for the normal distribution.
-        # Get upper and lower cdf values
         l = norm_cdf((a - mean) / std)
         u = norm_cdf((b - mean) / std)
-
-        # Uniformly fill tensor with values from [l, u], then translate to
-        # [2l-1, 2u-1].
         tensor.uniform_(2 * l - 1, 2 * u - 1)
-
-        # Use inverse cdf transform for normal distribution to get truncated
-        # standard normal
         tensor.erfinv_()
-
-        # Transform to proper mean, std
         tensor.mul_(std * math.sqrt(2.))
         tensor.add_(mean)
-
-        # Clamp to ensure it's in the proper range
         tensor.clamp_(min=a, max=b)
         return tensor
 
-
 def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
-    # type: (Tensor, float, float, float, float) -> Tensor
-    r"""Fills the input Tensor with values drawn from a truncated
-    normal distribution. The values are effectively drawn from the
-    normal distribution :math:`\mathcal{N}(\text{mean}, \text{std}^2)`
-    with values outside :math:`[a, b]` redrawn until they are within
-    the bounds. The method used for generating the random values works
-    best when :math:`a \leq \text{mean} \leq b`.
-    Args:
-        tensor: an n-dimensional `torch.Tensor`
-        mean: the mean of the normal distribution
-        std: the standard deviation of the normal distribution
-        a: the minimum cutoff value
-        b: the maximum cutoff value
-    Examples:
-        >>> w = torch.empty(3, 5)
-        >>> nn.init.trunc_normal_(w)
-    """
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
-
-class GeminiFusionModule(nn.Module):
-    """GeminiFusion module for pixel-wise multimodal fusion.
+@MODELS.register_module()
+class GeminiFusionBackbone(BaseModule):
+    """GeminiFusion backbone for multi-modal detection.
     
-    Args:
-        dim (int): Input dimension
-        num_heads (int): Number of attention heads
-        dropout (float): Dropout rate
-        layer_noise (float): Layer-adaptive noise factor
+    This backbone extracts features from multiple modalities and outputs
+    multi-scale features for detection heads.
     """
     
-    def __init__(self, dim, num_heads=8, dropout=0.0, layer_noise=0.1):
-        super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        self.layer_noise = layer_noise
-        
-        # Intra-modal self-attention
-        self.intra_attn = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
-        
-        # Inter-modal cross-attention  
-        self.inter_attn = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
-        
-        # Layer normalization
-        self.ln1 = nn.LayerNorm(dim)
-        self.ln2 = nn.LayerNorm(dim)
-        self.ln3 = nn.LayerNorm(dim)
-        
-        # MLP
-        mlp_hidden_dim = int(dim * 4)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, mlp_hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(mlp_hidden_dim, dim),
-            nn.Dropout(dropout)
-        )
-        
-        # Fusion gate
-        self.fusion_gate = nn.Sequential(
-            nn.Linear(dim * 2, dim),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x_rgb, x_modal, H, W):
-        """
-        Args:
-            x_rgb: RGB features [B, N, C]
-            x_modal: Other modal features [B, N, C] 
-            H, W: Spatial dimensions
-        """
-        B, N, C = x_rgb.shape
-        
-        # Intra-modal self-attention for RGB
-        x_rgb_norm = self.ln1(x_rgb)
-        x_rgb_attn, _ = self.intra_attn(x_rgb_norm, x_rgb_norm, x_rgb_norm)
-        x_rgb = x_rgb + x_rgb_attn
-        
-        # Intra-modal self-attention for other modality
-        x_modal_norm = self.ln1(x_modal)
-        x_modal_attn, _ = self.intra_attn(x_modal_norm, x_modal_norm, x_modal_norm)
-        x_modal = x_modal + x_modal_attn
-        
-        # Inter-modal cross-attention
-        x_rgb_norm2 = self.ln2(x_rgb)
-        x_modal_norm2 = self.ln2(x_modal)
-        
-        # RGB attends to modal
-        x_rgb_cross, _ = self.inter_attn(x_rgb_norm2, x_modal_norm2, x_modal_norm2)
-        # Modal attends to RGB  
-        x_modal_cross, _ = self.inter_attn(x_modal_norm2, x_rgb_norm2, x_rgb_norm2)
-        
-        # Layer-adaptive noise for fusion control
-        if self.training:
-            noise_factor = torch.randn(1, device=x_rgb.device) * self.layer_noise
-            noise_factor = torch.sigmoid(noise_factor)
-        else:
-            noise_factor = 0.5
-        
-        # Pixel-wise fusion with learnable gate
-        x_concat = torch.cat([x_rgb_cross, x_modal_cross], dim=-1)
-        fusion_weights = self.fusion_gate(x_concat)
-        
-        x_fused = noise_factor * (fusion_weights * x_rgb_cross + (1 - fusion_weights) * x_modal_cross) + \
-                  (1 - noise_factor) * (x_rgb + x_modal) / 2
-        
-        # MLP
-        x_fused_norm = self.ln3(x_fused)
-        x_fused = x_fused + self.mlp(x_fused_norm)
-        
-        return x_fused
-
-
-class Attention(nn.Module):
-    def __init__(self, dim, head, sr_ratio):
-        super().__init__()
-        self.head = head
-        self.sr_ratio = sr_ratio 
-        self.scale = (dim // head) ** -0.5
-        self.q = nn.Linear(dim, dim)
-        self.kv = nn.Linear(dim, dim*2)
-        self.proj = nn.Linear(dim, dim)
-
-        if sr_ratio > 1:
-            self.sr = nn.Conv2d(dim, dim, sr_ratio, sr_ratio)
-            self.norm = nn.LayerNorm(dim)
-
-    def forward(self, x: Tensor, H, W) -> Tensor:
-        B, N, C = x.shape
-        q = self.q(x).reshape(B, N, self.head, C // self.head).permute(0, 2, 1, 3)
-
-        if self.sr_ratio > 1:
-            x = x.permute(0, 2, 1).reshape(B, C, H, W)
-            x = self.sr(x).reshape(B, C, -1).permute(0, 2, 1)
-            x = self.norm(x)
-            
-        k, v = self.kv(x).reshape(B, -1, 2, self.head, C // self.head).permute(2, 0, 3, 1, 4)
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        return x
-
-
-class DWConv(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, groups=dim)
-
-    def forward(self, x: Tensor, H, W) -> Tensor:
-        B, _, C = x.shape
-        x = x.transpose(1, 2).view(B, C, H, W)
-        x = self.dwconv(x)
-        return x.flatten(2).transpose(1, 2)
-
-
-class MLP(nn.Module):
-    def __init__(self, c1, c2):
-        super().__init__()
-        self.fc1 = nn.Linear(c1, c2)
-        self.dwconv = DWConv(c2)
-        self.fc2 = nn.Linear(c2, c1)
-        
-    def forward(self, x: Tensor, H, W) -> Tensor:
-        return self.fc2(F.gelu(self.dwconv(self.fc1(x), H, W)))
-
-
-class PatchEmbed(nn.Module):
-    def __init__(self, c1=3, c2=32, patch_size=7, stride=4, padding=0):
-        super().__init__()
-        self.proj = nn.Conv2d(c1, c2, patch_size, stride, padding)
-        self.norm = nn.LayerNorm(c2)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.proj(x)
-        _, _, H, W = x.shape
-        x = x.flatten(2).transpose(1, 2)
-        x = self.norm(x)
-        return x, H, W
-
-
-class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
-    def __init__(self, p: float = None):
-        super().__init__()
-        self.p = p
-
-    def forward(self, x: Tensor) -> Tensor:
-        if self.p == 0. or not self.training:
-            return x
-        kp = 1 - self.p
-        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        random_tensor = kp + torch.rand(shape, dtype=x.dtype, device=x.device)
-        random_tensor.floor_()  # binarize
-        return x.div(kp) * random_tensor
-
-
-class Block(nn.Module):
-    def __init__(self, dim, head, sr_ratio=1, dpr=0.):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
-        self.attn = Attention(dim, head, sr_ratio)
-        self.drop_path = DropPath(dpr) if dpr > 0. else nn.Identity()
-        self.norm2 = nn.LayerNorm(dim)
-        self.mlp = MLP(dim, int(dim*4))
-
-    def forward(self, x: Tensor, H, W) -> Tensor:
-        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
-        return x
-
-
-# GeminiFusion backbone settings
-geminifusion_settings = {
-    'B0': [[32, 64, 160, 256], [2, 2, 2, 2]],
-    'B1': [[64, 128, 320, 512], [2, 2, 2, 2]],
-    'B2': [[64, 128, 320, 512], [3, 4, 6, 3]],
-    'B3': [[64, 128, 320, 512], [3, 4, 18, 3]],
-    'B4': [[64, 128, 320, 512], [3, 8, 27, 3]],
-    'B5': [[64, 128, 320, 512], [3, 6, 40, 3]]
-}
-
-
-class GeminiFusion(nn.Module):
-    def __init__(self, model_name: str = 'B2', modals: list = ['rgb', 'depth']):
-        super().__init__()
-        assert model_name in geminifusion_settings.keys(), f"Model name should be in {list(geminifusion_settings.keys())}"
-        embed_dims, depths = geminifusion_settings[model_name]
-        
-        self.modals = modals
-        self.num_modals = len(modals)
-        drop_path_rate = 0.1
-        self.channels = embed_dims
-
-        # Patch embedding layers for each stage
-        self.patch_embed1 = PatchEmbed(3, embed_dims[0], 7, 4, 7//2)
-        self.patch_embed2 = PatchEmbed(embed_dims[0], embed_dims[1], 3, 2, 3//2)
-        self.patch_embed3 = PatchEmbed(embed_dims[1], embed_dims[2], 3, 2, 3//2)
-        self.patch_embed4 = PatchEmbed(embed_dims[2], embed_dims[3], 3, 2, 3//2)
-
-        # Additional patch embedding for other modalities
-        if self.num_modals > 1:
-            self.extra_patch_embed1 = PatchEmbed(3, embed_dims[0], 7, 4, 7//2)
-            self.extra_patch_embed2 = PatchEmbed(embed_dims[0], embed_dims[1], 3, 2, 3//2)
-            self.extra_patch_embed3 = PatchEmbed(embed_dims[1], embed_dims[2], 3, 2, 3//2)
-            self.extra_patch_embed4 = PatchEmbed(embed_dims[2], embed_dims[3], 3, 2, 3//2)
-
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
-        
-        cur = 0
-        # Stage 1
-        self.block1 = nn.ModuleList([Block(embed_dims[0], 1, 8, dpr[cur+i]) for i in range(depths[0])])
-        self.norm1 = nn.LayerNorm(embed_dims[0])
-        if self.num_modals > 1:
-            self.extra_block1 = nn.ModuleList([Block(embed_dims[0], 1, 8, dpr[cur+i]) for i in range(depths[0])])
-            self.extra_norm1 = nn.LayerNorm(embed_dims[0])
-            self.fusion1 = GeminiFusionModule(embed_dims[0], num_heads=1, layer_noise=0.1)
-
-        cur += depths[0]
-        # Stage 2
-        self.block2 = nn.ModuleList([Block(embed_dims[1], 2, 4, dpr[cur+i]) for i in range(depths[1])])
-        self.norm2 = nn.LayerNorm(embed_dims[1])
-        if self.num_modals > 1:
-            self.extra_block2 = nn.ModuleList([Block(embed_dims[1], 2, 4, dpr[cur+i]) for i in range(depths[1])])
-            self.extra_norm2 = nn.LayerNorm(embed_dims[1])
-            self.fusion2 = GeminiFusionModule(embed_dims[1], num_heads=2, layer_noise=0.1)
-
-        cur += depths[1]
-        # Stage 3
-        self.block3 = nn.ModuleList([Block(embed_dims[2], 5, 2, dpr[cur+i]) for i in range(depths[2])])
-        self.norm3 = nn.LayerNorm(embed_dims[2])
-        if self.num_modals > 1:
-            self.extra_block3 = nn.ModuleList([Block(embed_dims[2], 5, 2, dpr[cur+i]) for i in range(depths[2])])
-            self.extra_norm3 = nn.LayerNorm(embed_dims[2])
-            self.fusion3 = GeminiFusionModule(embed_dims[2], num_heads=5, layer_noise=0.1)
-
-        cur += depths[2]
-        # Stage 4
-        self.block4 = nn.ModuleList([Block(embed_dims[3], 8, 1, dpr[cur+i]) for i in range(depths[3])])
-        self.norm4 = nn.LayerNorm(embed_dims[3])
-        if self.num_modals > 1:
-            self.extra_block4 = nn.ModuleList([Block(embed_dims[3], 8, 1, dpr[cur+i]) for i in range(depths[3])])
-            self.extra_norm4 = nn.LayerNorm(embed_dims[3])
-            self.fusion4 = GeminiFusionModule(embed_dims[3], num_heads=8, layer_noise=0.1)
-
-    def forward(self, x: list) -> list:
-        if len(x) == 1:  # Single modal
-            return self.forward_single_modal(x[0])
-        else:  # Multi-modal
-            return self.forward_multi_modal(x)
-    
-    def forward_single_modal(self, x_rgb):
-        """Forward pass for single modal (RGB only)"""
-        B = x_rgb.shape[0]
-        outs = []
-        
-        # Stage 1
-        x_rgb, H, W = self.patch_embed1(x_rgb)
-        for blk in self.block1:
-            x_rgb = blk(x_rgb, H, W)
-        x1_rgb = self.norm1(x_rgb).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x1_rgb)
-
-        # Stage 2
-        x_rgb, H, W = self.patch_embed2(x1_rgb)
-        for blk in self.block2:
-            x_rgb = blk(x_rgb, H, W)
-        x2_rgb = self.norm2(x_rgb).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x2_rgb)
-
-        # Stage 3
-        x_rgb, H, W = self.patch_embed3(x2_rgb)
-        for blk in self.block3:
-            x_rgb = blk(x_rgb, H, W)
-        x3_rgb = self.norm3(x_rgb).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x3_rgb)
-
-        # Stage 4
-        x_rgb, H, W = self.patch_embed4(x3_rgb)
-        for blk in self.block4:
-            x_rgb = blk(x_rgb, H, W)
-        x4_rgb = self.norm4(x_rgb).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x4_rgb)
-
-        return outs
-    
-    def forward_multi_modal(self, x):
-        """Forward pass for multi-modal inputs"""
-        x_rgb = x[0]
-        x_modal = x[1]  # Assume second modality for simplicity
-        B = x_rgb.shape[0]
-        outs = []
-
-        # Stage 1
-        x_rgb, H, W = self.patch_embed1(x_rgb)
-        x_modal, _, _ = self.extra_patch_embed1(x_modal)
-        
-        for blk in self.block1:
-            x_rgb = blk(x_rgb, H, W)
-        for blk in self.extra_block1:
-            x_modal = blk(x_modal, H, W)
-            
-        x1_rgb = self.norm1(x_rgb)
-        x1_modal = self.extra_norm1(x_modal)
-        
-        # GeminiFusion
-        x1_fused = self.fusion1(x1_rgb, x1_modal, H, W)
-        x1_fused = x1_fused.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x1_fused)
-
-        # Stage 2
-        x_rgb, H, W = self.patch_embed2(x1_fused)
-        x_modal, _, _ = self.extra_patch_embed2(x1_fused)
-        
-        for blk in self.block2:
-            x_rgb = blk(x_rgb, H, W)
-        for blk in self.extra_block2:
-            x_modal = blk(x_modal, H, W)
-            
-        x2_rgb = self.norm2(x_rgb)
-        x2_modal = self.extra_norm2(x_modal)
-        
-        x2_fused = self.fusion2(x2_rgb, x2_modal, H, W)
-        x2_fused = x2_fused.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x2_fused)
-
-        # Stage 3
-        x_rgb, H, W = self.patch_embed3(x2_fused)
-        x_modal, _, _ = self.extra_patch_embed3(x2_fused)
-        
-        for blk in self.block3:
-            x_rgb = blk(x_rgb, H, W)
-        for blk in self.extra_block3:
-            x_modal = blk(x_modal, H, W)
-            
-        x3_rgb = self.norm3(x_rgb)
-        x3_modal = self.extra_norm3(x_modal)
-        
-        x3_fused = self.fusion3(x3_rgb, x3_modal, H, W)
-        x3_fused = x3_fused.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x3_fused)
-
-        # Stage 4
-        x_rgb, H, W = self.patch_embed4(x3_fused)
-        x_modal, _, _ = self.extra_patch_embed4(x3_fused)
-        
-        for blk in self.block4:
-            x_rgb = blk(x_rgb, H, W)
-        for blk in self.extra_block4:
-            x_modal = blk(x_modal, H, W)
-            
-        x4_rgb = self.norm4(x_rgb)
-        x4_modal = self.extra_norm4(x_modal)
-        
-        x4_fused = self.fusion4(x4_rgb, x4_modal, H, W)
-        x4_fused = x4_fused.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        outs.append(x4_fused)
-
-        return outs
-
-
-class GeminiFusionBaseModel(BaseModule):
-    """Base model wrapper for GeminiFusion backbone."""
-    
-    def __init__(self, 
-                 backbone: str = 'MiT-B2', 
-                 modals: List[str] = ['rgb', 'depth'],
-                 init_cfg: Optional[dict] = None) -> None:
+    def __init__(
+        self,
+        backbone: str = "GeminiFusion-B2",
+        modals: list = ["rgb", "depth", "event", "lidar"],
+        drop_path_rate: float = 0.0,
+        out_indices: Tuple[int] = (0, 1, 2, 3),
+        frozen_stages: int = -1,
+        init_cfg: dict = None,
+        pretrained: Optional[str] = None,
+    ) -> None:
         super().__init__(init_cfg=init_cfg)
         
-        backbone_name, variant = backbone.split('-')
-        self.backbone = GeminiFusion(variant, modals)
+        # Parse backbone variant
+        if '-' in backbone:
+            backbone_name, variant = backbone.split("-")
+        else:
+            backbone_name = "GeminiFusion"
+            variant = backbone
+            
+        # Initialize GeminiFusion backbone
+        self.backbone = GeminiFusionBasemodel(
+            backbone=variant,
+            modals=modals,
+            drop_path_rate=drop_path_rate,
+            num_modal=len(modals),
+        )
+        
         self.modals = modals
+        self.out_indices = out_indices
+        self.frozen_stages = frozen_stages
+        self.num_parallel = 2
+        
+        # Get feature dimensions from backbone
+        # These should match your GeminiFusionBackbone output dimensions
+        if variant == 'B0':
+            self.embed_dims = [32, 64, 160, 256]
+        elif variant == 'B1':
+            self.embed_dims = [64, 128, 320, 512]
+        elif variant == 'B2':
+            self.embed_dims = [64, 128, 320, 512]
+        elif variant == 'B3':
+            self.embed_dims = [64, 128, 320, 512]
+        elif variant == 'B4':
+            self.embed_dims = [64, 128, 320, 512]
+        elif variant == 'B5':
+            self.embed_dims = [64, 128, 320, 512]
+        else:
+            raise ValueError(f"Unsupported variant: {variant}")
+            
+        # Apply weight initialization
+        self.apply(self._init_weights)
+        
+        # Freeze stages if specified
+        self._freeze_stages()
+
+    def forward(self, x: List[Tensor]) -> Tuple[Tensor]:
+        """Forward function for backbone.
+        
+        Args:
+            x: List of input tensors for different modalities
+            
+        Returns:
+            Tuple of output feature maps at different scales
+        """
+        # Extract multi-modal features using GeminiFusion backbone
+        x_modals = self.backbone(x)
+        # x_modals should be a list of [branch1_features, branch2_features]
+        # Each branch contains multi-scale features
+        # For detection, we typically use the first branch or ensemble them
+        # Here we'll use the first branch and return the specified indices
+        if isinstance(x_modals, (list, tuple)) and len(x_modals) >= 1:
+            # Use second branch features
+            features = x_modals[1]
+        else:
+            features = x_modals
+            
+        # Select output features based on out_indices
+        outs = []
+        for i in self.out_indices:
+            if i < len(features):
+                outs.append(features[i])
+            else:
+                raise IndexError(f"Index {i} out of range for features of length {len(features)}")
+        
+        return tuple(outs)
+
+    def _freeze_stages(self):
+        """Freeze specified stages."""
+        if self.frozen_stages >= 0:
+            # Freeze backbone parameters up to specified stage
+            for param in self.backbone.parameters():
+                param.requires_grad = False
 
     def _init_weights(self, m: nn.Module) -> None:
-        """Initialize weights."""
+        """Initialize model weights."""
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=0.02)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, nn.Conv2d):
@@ -509,122 +892,69 @@ class GeminiFusionBaseModel(BaseModule):
             nn.init.zeros_(m.bias)
 
     def init_pretrained(self, pretrained: str = None) -> None:
-        """Load pretrained weights."""
+        """Initialize backbone with pretrained weights."""
         if pretrained:
-            if len(self.modals) > 1:
-                load_geminifusion_model(self.backbone, pretrained)
-            else:
-                checkpoint = torch.load(pretrained, map_location='cpu')
-                if 'state_dict' in checkpoint.keys():
-                    checkpoint = checkpoint['state_dict']
-                if 'model' in checkpoint.keys():
-                    checkpoint = checkpoint['model']
-                msg = self.backbone.load_state_dict(checkpoint, strict=False)
-                print(f"[GeminiFusion] Single modal pretrained loaded: {msg}")
+            checkpoint = torch.load(pretrained, map_location="cpu")
+            if "state_dict" in checkpoint.keys():
+                checkpoint = checkpoint["state_dict"]
+            if "model" in checkpoint.keys():
+                checkpoint = checkpoint["model"]
+                
+            # Remove head weights if they exist
+            keys_to_remove = [k for k in checkpoint.keys() if 'head' in k]
+            for key in keys_to_remove:
+                checkpoint.pop(key, None)
+                
+            # Expand state dict for parallel structure
+            checkpoint = self._expand_state_dict(
+                self.backbone.state_dict(), checkpoint, self.num_parallel
+            )
+            msg = self.backbone.load_state_dict(checkpoint, strict=False)
+            print(f"Pretrained weights loaded: {msg}")
 
-
-@MODELS.register_module()
-class GeminiFusionBackbone(BaseModule):
-    """GeminiFusion backbone for multimodal object detection.
-    
-    This backbone processes multimodal inputs with efficient pixel-wise fusion
-    and outputs multi-scale features for detection.
-    
-    Args:
-        backbone (str): Backbone variant, e.g., 'MiT-B0', 'MiT-B2'
-        modals (list): List of modalities to process  
-        out_indices (tuple): Output indices for FPN
-        frozen_stages (int): Stages to be frozen
-        norm_eval (bool): Whether to set norm layers to eval mode
-        pretrained (str): Path to pretrained weights
-    """
-    
-    def __init__(self,
-                 backbone: str = 'MiT-B2',
-                 modals: List[str] = ['rgb', 'depth'],
-                 out_indices: Tuple[int] = (0, 1, 2, 3),
-                 frozen_stages: int = -1,
-                 norm_eval: bool = False,
-                 pretrained: Optional[str] = None,
-                 init_cfg: Optional[dict] = None):
+    def _expand_state_dict(self, model_dict, state_dict, num_parallel):
+        """Expand state dictionary for parallel structure."""
+        model_dict_keys = model_dict.keys()
+        state_dict_keys = state_dict.keys()
         
-        super().__init__(init_cfg=init_cfg)
-        
-        self.backbone_name = backbone
-        self.modals = modals
-        self.out_indices = out_indices
-        self.frozen_stages = frozen_stages
-        self.norm_eval = norm_eval
-        
-        # Create GeminiFusion base model
-        self.geminifusion_model = GeminiFusionBaseModel(
-            backbone=backbone, 
-            modals=modals,
-            init_cfg=init_cfg
-        )
-        
-        # Determine output channels based on backbone variant
-        if 'B0' in backbone:
-            self.out_channels = [32, 64, 160, 256]
-        elif 'B1' in backbone:
-            self.out_channels = [64, 128, 320, 512]
-        elif 'B2' in backbone or 'B3' in backbone or 'B4' in backbone or 'B5' in backbone:
-            self.out_channels = [64, 128, 320, 512]
-        else:
-            self.out_channels = [64, 128, 320, 512]  # Default
-        
-        # Load pretrained weights if provided
-        if pretrained:
-            self.geminifusion_model.init_pretrained(pretrained)
-        
-        self._freeze_stages()
-    
-    def _freeze_stages(self):
-        """Freeze stages according to frozen_stages."""
-        if self.frozen_stages >= 0:
-            # Freeze patch embedding
-            if hasattr(self.geminifusion_model.backbone, 'patch_embed1'):
-                for param in self.geminifusion_model.backbone.patch_embed1.parameters():
-                    param.requires_grad = False
+        for model_dict_key in model_dict_keys:
+            model_dict_key_re = model_dict_key.replace("module.", "")
+            if model_dict_key_re in state_dict_keys:
+                model_dict[model_dict_key] = state_dict[model_dict_key_re]
             
-            # Freeze stages
-            for i in range(self.frozen_stages + 1):
-                if hasattr(self.geminifusion_model.backbone, f'block{i+1}'):
-                    for param in getattr(self.geminifusion_model.backbone, f'block{i+1}').parameters():
-                        param.requires_grad = False
-    
-    def forward(self, x: List[torch.Tensor]) -> Tuple[torch.Tensor]:
-        """Forward pass of GeminiFusion backbone.
+            for i in range(num_parallel):
+                ln = f".ln_{i}"
+                replace = True if ln in model_dict_key_re else False
+                model_dict_key_re = model_dict_key_re.replace(ln, "")
+                if replace and model_dict_key_re in state_dict_keys:
+                    model_dict[model_dict_key] = state_dict[model_dict_key_re]
         
-        Args:
-            x: List of multimodal tensors [rgb_tensor, depth_tensor, ...]
-               Each tensor has shape (B, C, H, W)
-        
-        Returns:
-            Tuple of feature tensors from different stages
-        """
-        # GeminiFusion backbone expects list of multimodal inputs
-        features = self.geminifusion_model.backbone(x)
-        
-        # Return features at specified indices
-        outs = [features[i] for i in self.out_indices]
-        
-        return tuple(outs)
-    
-    def train(self, mode: bool = True):
-        """Set train/eval mode."""
+        return model_dict
+
+    def train(self, mode=True):
+        """Override train mode to handle frozen stages."""
         super().train(mode)
-        
-        if mode and self.norm_eval:
-            # Set norm layers to eval mode
-            for m in self.modules():
-                if isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
-                    m.eval()
-    
-    def init_weights(self):
-        """Initialize weights of the backbone."""
-        if self.init_cfg is None:
-            # Apply custom weight initialization
-            self.geminifusion_model.apply(self.geminifusion_model._init_weights)
-        else:
-            super().init_weights()
+        self._freeze_stages()
+        return self
+
+
+# Additional utility classes that might be needed
+class MLP(nn.Module):
+    def __init__(self, dim, embed_dim):
+        super().__init__()
+        self.proj = nn.Linear(dim, embed_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.flatten(2).transpose(1, 2)
+        x = self.proj(x)
+        return x
+
+class ConvModule(nn.Module):
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, 1, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.activate = nn.ReLU(True)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.activate(self.bn(self.conv(x)))

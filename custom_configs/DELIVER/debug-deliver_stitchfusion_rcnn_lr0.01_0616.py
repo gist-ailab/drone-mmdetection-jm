@@ -10,18 +10,18 @@ data_root= '/SSDb/jemo_maeng/dset/DELIVER'
 # Model settings
 model = dict(
     type='FasterRCNN',
-    data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
+    data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='StitchFusionBackbone',
+        backbone='stitchfusion-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=999,
-        freeze_fusion_with_stages=True,
+        frozen_stages=-1,
+        feature_norm=True,  # 🔥 추가
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
-        type='FPN',  # MMDetection 표준 FPN 사용
+        type='FPN',
         in_channels=[64, 128, 320, 512],
         out_channels=256,
         num_outs=5
@@ -31,8 +31,7 @@ model = dict(
         in_channels=256,
         feat_channels=256,
         anchor_generator=dict(
-            type='AnchorGenerator',  # 32 16 8 4 
-            # scales=[8],
+            type='AnchorGenerator',
             scales=[2, 4, 8, 16],
             ratios=[0.5, 1.0, 2.0],
             strides=[4, 8, 16, 32, 64]
@@ -45,7 +44,7 @@ model = dict(
         loss_cls=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0
         ),
-        loss_bbox=dict(type='L1Loss', loss_weight=1.0)
+        loss_bbox=dict(type='L1Loss', loss_weight=0.5)  # 🔥 1.0 → 0.5
     ),
     roi_head=dict(
         type='StandardRoIHead',
@@ -60,17 +59,17 @@ model = dict(
             in_channels=256,
             fc_out_channels=1024,
             roi_feat_size=7,
-            num_classes=2,  # Vehicle, Human
+            num_classes=2,
             bbox_coder=dict(
                 type='DeltaXYWHBBoxCoder',
                 target_means=[0., 0., 0., 0.],
-                target_stds=[0.1, 0.1, 0.2, 0.2]
+                target_stds=[0.1, 0.1, 0.2, 0.2]  # 🔥 더 작은 std로 안정화
             ),
             reg_class_agnostic=False,
             loss_cls=dict(
                 type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0
             ),
-            loss_bbox=dict(type='L1Loss', loss_weight=1.0)
+            loss_bbox=dict(type='L1Loss', loss_weight=0.5)  # 🔥 1.0 → 0.5
         )
     ),
     # Training config
@@ -104,10 +103,10 @@ model = dict(
         rcnn=dict(
             assigner=dict(
                 type='MaxIoUAssigner',
-                pos_iou_thr=0.5,        # 🔥 0.5 → 0.3
-                neg_iou_thr=0.5,        # 🔥 0.5 → 0.1  
-                min_pos_iou=0.5,        # 🔥 0.5 → 0.1
-                match_low_quality=False, # 🔥 False → True
+                pos_iou_thr=0.5,
+                neg_iou_thr=0.5,
+                min_pos_iou=0.5,
+                match_low_quality=False,
                 ignore_iof_thr=-1
             ),
             sampler=dict(
@@ -120,25 +119,11 @@ model = dict(
             pos_weight=-1,
             debug=False
         )
-    ),
-    # Testing config
-    test_cfg=dict(
-        rpn=dict(
-            nms_pre=1000,
-            max_per_img=1000,
-            nms=dict(type='nms', iou_threshold=0.7),
-            min_bbox_size=0
-        ),
-        rcnn=dict(
-            score_thr=0.05,
-            nms=dict(type='nms', iou_threshold=0.5),
-            max_per_img=100
-        )
     )
 )
 
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=2,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -172,10 +157,38 @@ val_evaluator = dict(
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
-    clip_grad=dict(max_norm=5, norm_type=2),
-    accumulative_counts=4
+    optimizer=dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0001),  # 🔥 0.01 → 0.002
+    clip_grad=dict(max_norm=1.0, norm_type=2),  # 🔥 5 → 1.0 더 강한 clipping
+    accumulative_counts=8
 )
+
+param_scheduler = [
+    dict(
+        type='LinearLR',
+        start_factor=0.001,  # 시작 시 매우 작은 LR
+        by_epoch=False,
+        begin=0,
+        end=500,  # 500 step 동안 warmup
+        convert_to_iter_based=True
+    ),
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=50,
+        by_epoch=True,
+        milestones=[30, 40],  # epoch 30, 40에서 감소
+        gamma=0.1
+    )
+]
+
+
+train_cfg = dict(
+    type='EpochBasedTrainLoop', 
+    max_epochs=50, 
+    val_interval=5)
+
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -183,13 +196,14 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='Edited freeze backbone,CMNeXt RCNN with freezed backbone',
+            name='DEBUG- lecun-deliver_stitchfusion_rcnn_lr0.01_0615',
+            tags=['debuggin', 'Stitfusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
         ),
     )
 ]
+
 # ✅ Standard hooks configuration
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
@@ -230,8 +244,10 @@ visualizer = dict(
     name='visualizer'
 )
 
-# Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll_0613'
 
+
+# Experiment name for logging
+# experiment_name = os.path.splitext(os.path.basename(os.environ.get('CONFIG_FILE', 'default_config.py')))[0]
+experiment_name = 'lecun-deliver_stitchfusion_rcnn_lr0.01_0615'
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'

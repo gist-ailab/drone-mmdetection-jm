@@ -12,12 +12,11 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,  # This comes from _base_
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='GeminiFusionBackbone',
+        backbone='MiT-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
-        frozen_stages=999,
-        freeze_fusion_with_stages=True,
+        frozen_stages=-1,
         pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -169,13 +168,34 @@ val_evaluator = dict(
     metric='bbox',
     format_only=False
 )
+train_cfg = dict(
+    type='EpochBasedTrainLoop', 
+    max_epochs=50, 
+    val_interval=5)
+
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+    optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
     accumulative_counts=4
 )
+
+param_scheduler = [
+    dict(
+        type='LinearLR',
+        start_factor=0.001,
+        by_epoch=False,
+        begin=0,
+        end=500),  # warmup
+    dict(
+        type='CosineAnnealingLR',
+        T_max=100,  # cosine annealing
+        by_epoch=True,
+        begin=10,
+        end=50,
+        eta_min=1e-6)
+]
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -183,9 +203,9 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='lecun-deliver_cmnext_rcnn_lr0.01_freezeAll_Editedfreeze',
-            tags=['CMNeXt', 'RCNN', ],
-            notes='Edited freeze backbone,CMNeXt RCNN with freezed backbone',
+            name='lecun-deliver_geminifusion_rcnn_lr0.0025_ep50',
+            tags=['Geminifusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='Geminifusion RCNN with epoch 50 cosinelr',
             save_code=True
         ),
     )
@@ -230,8 +250,11 @@ visualizer = dict(
     name='visualizer'
 )
 
+
+
+
 # Experiment name for logging
-experiment_name = 'hinton-deliver_cmnext_rcnn_lr0.01_freezeAll_0613'
+experiment_name = 'lecun-deliver_geminifusion_rcnn_lr0.0025_ep50'
 
 # Override work_dir if needed
 work_dir = f'./work_dirs/{experiment_name}'
