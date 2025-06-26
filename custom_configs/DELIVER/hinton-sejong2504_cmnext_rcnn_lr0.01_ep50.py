@@ -146,7 +146,7 @@ train_dataloader = dict(
     dataset=dict(
         type = dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}/labels/train.json',
+        ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
         metainfo = dict(
             classes = classes,
@@ -175,7 +175,7 @@ val_dataloader = dict(
     dataset=dict(
         type = dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}/labels/test.json',
+        ann_file=f'{data_root}labels/test.json',
         data_prefix=dict(img='images'),
         metainfo = dict(
             classes = classes,
