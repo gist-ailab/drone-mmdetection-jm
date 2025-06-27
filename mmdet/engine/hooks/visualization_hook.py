@@ -96,6 +96,7 @@ class DetVisualizationHook(Hook):
 
         # Visualize only the first data
         img_path = outputs[0].img_path
+        img_path = str(img_path).strip()
         img_bytes = get(img_path, backend_args=self.backend_args)
         img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -132,6 +133,7 @@ class DetVisualizationHook(Hook):
             self._test_index += 1
 
             img_path = data_sample.img_path
+            img_path = str(img_path).strip()
             img_bytes = get(img_path, backend_args=self.backend_args)
             img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -294,6 +296,7 @@ class TrackVisualizationHook(Hook):
             step (int): The index of the current image.
         """
         img_path = img_data_sample.img_path
+        img_path = str(img_path).strip()
         img_bytes = get(img_path, backend_args=self.backend_args)
         img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -370,6 +373,7 @@ class GroundingVisualizationHook(DetVisualizationHook):
             self._test_index += 1
 
             img_path = data_sample.img_path
+            img_path = str(img_path).strip()
             img_bytes = get(img_path, backend_args=self.backend_args)
             img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
 
@@ -513,3 +517,155 @@ class GroundingVisualizationHook(DetVisualizationHook):
                     pred_score_thr=self.score_thr,
                     out_file=out_file,
                     step=self._test_index)
+                
+@HOOKS.register_module()
+class MultiModalVisualizationHook(Hook):
+    def __init__(self,
+                 draw: bool = False,
+                 interval: int = 50,
+                 score_thr: float = 0.3,
+                 show: bool = False,
+                 wait_time: float = 0.,
+                 test_out_dir: Optional[str] = None,
+                 backend_args: dict = None):
+        self._visualizer: Visualizer = Visualizer.get_current_instance()
+        self.interval = interval
+        self.score_thr = score_thr
+        self.show = show
+        if self.show:
+            self._visualizer._vis_backends = {}
+            warnings.warn('The show is True: only visualizing, not saving via vis_backends.')
+
+        self.wait_time = wait_time
+        self.backend_args = backend_args
+        self.draw = draw
+        self.test_out_dir = test_out_dir
+        self._test_index = 0
+
+    def after_test_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
+                        outputs: Sequence[DetDataSample]) -> None:
+        if not self.draw:
+            return
+
+        if self.test_out_dir is not None:
+            self.test_out_dir = osp.join(runner.work_dir, runner.timestamp, self.test_out_dir)
+            mkdir_or_exist(self.test_out_dir)
+
+        classes = ('Human', 'Vehicle')
+
+        for data_sample in outputs:
+            self._test_index += 1
+            data_sample = data_sample.cpu()
+
+            rgb_path = str(data_sample.img_path).strip()
+            depth_path = str(data_sample.metainfo.get('depth_path', '')).strip()
+            lidar_path = str(data_sample.metainfo.get('lidar_path', '')).strip()
+            thermal_path = str(data_sample.metainfo.get('thermal_path', '')).strip()
+
+            img_rgb = self._load_image(rgb_path)
+            h, w, _ = img_rgb.shape
+
+            img_depth_raw = self._load_image(depth_path, gray_to_rgb=True)
+            img_lidar_raw = self._load_image(lidar_path)
+            img_thermal_raw = self._load_image(thermal_path)
+
+            # Resize to RGB size
+            img_depth = mmcv.imresize(img_depth_raw, (w, h))
+            img_lidar = mmcv.imresize(img_lidar_raw, (w, h))
+            img_thermal = mmcv.imresize(img_thermal_raw, (w, h))
+
+            # Original sizes
+            def get_shape(img): return img.shape[:2]
+            shape_depth = get_shape(img_depth_raw)
+            shape_lidar = get_shape(img_lidar_raw)
+            shape_thermal = get_shape(img_thermal_raw)
+
+            # Bounding boxes
+            gt_bboxes = data_sample.gt_instances.get('bboxes', None)
+            gt_labels = data_sample.gt_instances.get('labels', None)
+            pred_instances = data_sample.pred_instances
+            pred_bboxes = pred_instances.bboxes if pred_instances else None
+            pred_labels = pred_instances.labels if pred_instances else None
+            pred_scores = pred_instances.scores if pred_instances else None
+
+            if pred_instances is not None and len(pred_instances) > 0:
+                keep = pred_scores > self.score_thr
+                pred_bboxes = pred_bboxes[keep]
+                pred_labels = pred_labels[keep]
+
+            def scale_bboxes(bboxes, from_shape, to_shape):
+                if bboxes is None:
+                    return None
+                scale_x = to_shape[1] / from_shape[1]
+                scale_y = to_shape[0] / from_shape[0]
+                scaled = bboxes.clone()
+                scaled[:, 0::2] *= scale_x
+                scaled[:, 1::2] *= scale_y
+                return scaled
+
+            # Helper to draw GT and Pred
+            def draw_split(img, modality_shape):
+                self._visualizer.set_image(img.copy())
+                gt_scaled = scale_bboxes(gt_bboxes, from_shape=(512, 512), to_shape=(1042, 1042))
+                if gt_scaled is not None and gt_labels is not None:
+                    self._visualizer.draw_bboxes(gt_scaled, edge_colors='green', alpha=0.4)
+                    label_texts = [classes[l] for l in gt_labels]
+                    self._visualizer.draw_texts(
+                        label_texts,
+                        gt_scaled[:, :2].int().numpy(),
+                        colors='green',
+                        font_sizes=9,
+                        bboxes=[{
+                            'facecolor': 'white',
+                            'alpha': 0.8,
+                            'pad': 0.7,
+                            'edgecolor': 'none'
+                        }] * len(gt_scaled))
+                img_gt = self._visualizer.get_image()
+
+                self._visualizer.set_image(img.copy())
+                pred_scaled = scale_bboxes(pred_bboxes, modality_shape, (h, w))
+                if pred_scaled is not None and pred_labels is not None:
+                    self._visualizer.draw_bboxes(pred_scaled, edge_colors='red', alpha=0.8)
+                    label_texts = [classes[l] for l in pred_labels]
+                    self._visualizer.draw_texts(
+                        label_texts,
+                        pred_scaled[:, :2].int().numpy(),
+                        colors='red',
+                        font_sizes=9,
+                        bboxes=[{
+                            'facecolor': 'white',
+                            'alpha': 0.8,
+                            'pad': 0.7,
+                            'edgecolor': 'none'
+                        }] * len(pred_scaled))
+                img_pred = self._visualizer.get_image()
+
+                return np.concatenate([img_gt, img_pred], axis=1)
+
+            # Create each modality row
+            rgb_row = draw_split(img_rgb, (h, w))
+            depth_row = draw_split(img_depth, shape_depth)
+            lidar_row = draw_split(img_lidar, shape_lidar)
+            thermal_row = draw_split(img_thermal, shape_thermal)
+
+            final_vis = np.concatenate([rgb_row, depth_row, lidar_row, thermal_row], axis=0)
+
+            out_file = None
+            if self.test_out_dir is not None:
+                out_file = osp.join(self.test_out_dir, f"{self._test_index:06d}.jpg")
+            if self.show:
+                self._visualizer.show(final_vis, win_name='multi_modal_split', wait_time=self.wait_time)
+            if out_file is not None:
+                mmcv.imwrite(final_vis[..., ::-1], out_file)
+
+    def _load_image(self, path, gray_to_rgb=False):
+        if path is None or not osp.exists(path):
+            return np.ones((512, 512, 3), dtype=np.uint8) * 255  # fallback white image
+        path = str(path).strip()
+        img_bytes = get(path, backend_args=self.backend_args)
+        if gray_to_rgb:
+            img_gray = mmcv.imfrombytes(img_bytes, flag='grayscale')
+            return np.stack([img_gray]*3, axis=-1)
+        return mmcv.imfrombytes(img_bytes, channel_order='rgb')
+
