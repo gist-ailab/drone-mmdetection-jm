@@ -127,3 +127,5 @@ work_dirs/
 
 *.png
 *.jpg
+
+/work_dirs/

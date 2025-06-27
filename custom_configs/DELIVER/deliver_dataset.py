@@ -8,9 +8,9 @@ _base_ = [
 
 # Dataset basic info
 dataset_type = 'DELIVERDetectionDataset'
-data_root = '/media/jemo/HDD1/Workspace/dset/DELIVER/'  # Added trailing slash
+data_root = '/SSDb/jemo_maeng/dset/DELIVER/'  # Added trailing slash
 backend_args = None
-classes = ('Vehicle', 'Human')
+classes = ('Human', 'Vehicle')
 
 # Data preprocessor
 data_preprocessor = dict(
@@ -44,7 +44,11 @@ train_pipeline = [
         prob=0.5,
         bbox_format='xywh'  # 🔥 xywh format 명시
     ),
-    dict(type='PackDELIVERDetInputs')
+    # dict(type='PackDELIVERDetInputs')
+    dict(
+    type='PackDELIVERDetInputs',
+    meta_keys=('img_path', 'img_id', 'ori_shape', 'img_shape', 'scale_factor', 'flip', 'flip_direction')
+)
 ]
 
 test_pipeline = [
@@ -55,7 +59,11 @@ test_pipeline = [
         keep_ratio=True,
         bbox_format='xywh'  # 🔥 xywh format 명시
     ),
-    dict(type='PackDELIVERDetInputs')
+    # dict(type='PackDELIVERDetInputs')
+    dict(
+    type='PackDELIVERDetInputs',
+    meta_keys=('img_path', 'img_id', 'ori_shape', 'img_shape', 'scale_factor', 'flip', 'flip_direction', 'depth_path', 'lidar_path', 'thermal_path')
+)
 ]
 
 # Dataset configs
@@ -133,7 +141,7 @@ param_scheduler = [
 ]
 
 # Training settings
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=24, val_interval=1)  # Updated for 2x
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=100, val_interval=1)  # Updated for 2x
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 
@@ -144,7 +152,14 @@ default_hooks = dict(
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(type='CheckpointHook', interval=1, save_best='coco/bbox_mAP'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='DetVisualizationHook')
+    visualization=dict(
+        type='MultiModalVisualizationHook',
+        draw=True,
+        interval=1,
+        score_thr=0.3,
+        show=False,
+        test_out_dir='vis_results'
+    )
 )
 
 # Visualization settings

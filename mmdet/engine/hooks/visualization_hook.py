@@ -556,12 +556,18 @@ class MultiModalVisualizationHook(Hook):
         for data_sample in outputs:
             self._test_index += 1
             data_sample = data_sample.cpu()
-
+            print("data_sample:", data_sample)
             rgb_path = str(data_sample.img_path).strip()
-            depth_path = str(data_sample.metainfo.get('depth_path', '')).strip()
-            lidar_path = str(data_sample.metainfo.get('lidar_path', '')).strip()
-            thermal_path = str(data_sample.metainfo.get('thermal_path', '')).strip()
+            depth_path = str(data_sample.metainfo.get('depth_path') or 
+                            data_sample.metainfo.get('modality_paths', {}).get('depth', '')).strip()
 
+            lidar_path = str(data_sample.metainfo.get('lidar_path') or 
+                            data_sample.metainfo.get('modality_paths', {}).get('lidar', '')).strip()
+
+            thermal_path = str(data_sample.metainfo.get('thermal_path') or 
+                            data_sample.metainfo.get('modality_paths', {}).get('event', '')).strip()
+
+            print(rgb_path, depth_path, lidar_path, thermal_path)
             img_rgb = self._load_image(rgb_path)
             h, w, _ = img_rgb.shape
 
@@ -627,7 +633,10 @@ class MultiModalVisualizationHook(Hook):
                 pred_scaled = scale_bboxes(pred_bboxes, modality_shape, (h, w))
                 if pred_scaled is not None and pred_labels is not None:
                     self._visualizer.draw_bboxes(pred_scaled, edge_colors='red', alpha=0.8)
-                    label_texts = [classes[l] for l in pred_labels]
+                    label_texts = [
+                        f"{classes[l]} {round(s.item(), 2)}"
+                        for l, s in zip(pred_labels, pred_scores[keep])
+                    ]
                     self._visualizer.draw_texts(
                         label_texts,
                         pred_scaled[:, :2].int().numpy(),
@@ -639,6 +648,7 @@ class MultiModalVisualizationHook(Hook):
                             'pad': 0.7,
                             'edgecolor': 'none'
                         }] * len(pred_scaled))
+
                 img_pred = self._visualizer.get_image()
 
                 return np.concatenate([img_gt, img_pred], axis=1)
@@ -653,7 +663,13 @@ class MultiModalVisualizationHook(Hook):
 
             out_file = None
             if self.test_out_dir is not None:
-                out_file = osp.join(self.test_out_dir, f"{self._test_index:06d}.jpg")
+                basename = osp.basename(rgb_path)
+                basename = (basename
+                            .replace('_rgb_', '_')
+                            .replace('_depth_', '_')
+                            .replace('_event_', '_')
+                            .replace('_lidar_', '_'))
+                out_file = osp.join(self.test_out_dir, basename)
             if self.show:
                 self._visualizer.show(final_vis, win_name='multi_modal_split', wait_time=self.wait_time)
             if out_file is not None:
