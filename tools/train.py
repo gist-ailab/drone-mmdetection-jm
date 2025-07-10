@@ -12,7 +12,8 @@ from mcdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('config',default='/SSDb/sangmin_park/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_geminifusion_rcnn_lr0.01.py', help='train config file path')
+    # parser.add_argument('config',default='/SSDb/sangmin_park/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_geminifusion_rcnn_lr0.01.py', help='train config file path')
+    parser.add_argument('config',default='/SSDb/sangmin_park/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_geminifusion_retina_lr0.01.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
