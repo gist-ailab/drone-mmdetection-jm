@@ -13,8 +13,7 @@ from mcdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    # parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_sharednone.py', help='train config file path')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_cmnext_rcnn_lr0.01_freezeAll.py', help='train config file path')
+    parser.add_argument('--config',default='/media/jemo/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/configs/balloon/dino_dinov2_fpn_ballon_uf.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
@@ -96,9 +95,9 @@ def main():
             cfg.auto_scale_lr.enable = True
         else:
             raise RuntimeError('Can not find "auto_scale_lr" or '
-                               '"auto_scale_lr.enable" or '
-                               '"auto_scale_lr.base_batch_size" in your'
-                               ' configuration file.')
+                            '"auto_scale_lr.enable" or '
+                            '"auto_scale_lr.base_batch_size" in your'
+                            ' configuration file.')
 
     # resume is determined in this priority: resume from > auto_resume
     if args.resume == 'auto':

@@ -79,6 +79,9 @@ mim install "mmcv==2.1.0"       #important
 git clone https://github.com/gist-ailab/drone-mmdetection-jm.git
 cd drone-mmdetection-jm
 pip install -v -e .
+pip install scikit-learn
+pip install timm
+pip install fvcore
 ```
 
 <img src="https://user-images.githubusercontent.com/12907710/187674113-2074d658-f2fb-42d1-ac15-9c4a695e64d7.png"/>
