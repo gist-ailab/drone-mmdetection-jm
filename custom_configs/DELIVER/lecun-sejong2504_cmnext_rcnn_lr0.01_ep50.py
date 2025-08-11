@@ -137,6 +137,36 @@ model = dict(
     )
 )
 
+
+train_pipeline = [
+    dict(type='LoadDELIVERImages'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(
+        type='DELIVERResize', 
+        img_scale=(512, 512), 
+        keep_ratio=True,
+        bbox_format='xywh'  # 🔥 xywh format 명시
+    ),
+    dict(
+        type='DELIVERRandomFlip', 
+        prob=0.5,
+        bbox_format='xywh'  # 🔥 xywh format 명시
+    ),
+    dict(type='PackDELIVERDetInputs')
+]
+
+test_pipeline = [
+    dict(type='LoadDELIVERImages'),
+    dict(
+        type='DELIVERResize', 
+        img_scale=(512, 512), 
+        keep_ratio=True,
+        bbox_format='xywh'  # 🔥 xywh format 명시
+    ),
+    dict(type='PackDELIVERDetInputs')
+]
+
+
 train_dataloader = dict(
     batch_size=8,
     num_workers=2,
@@ -147,6 +177,7 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
+        pipeline= train_pipeline,
         metainfo = dict(
             classes = classes,
             palette= [
@@ -176,6 +207,8 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
         data_prefix=dict(img='images'),
+        test_mode = True,
+        pipeline=test_pipeline,
         metainfo = dict(
             classes = classes,
             palette=[

@@ -100,11 +100,71 @@ class SejongMultimodalVisualizer:
             cv2.putText(concat_img, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
         return concat_img
 
+    # @torch.no_grad()
+    # def visualize_from_validation_set(self, output_dir: str, num_samples: int = 10, score_threshold: float = 0.3):
+    #     """
+    #     **Config 파일의 val_dataloader에서 얻은 텐서로 직접 추론하고 GT와 함께 시각화**
+    #     """
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     val_dataset_cfg = self.cfg.val_dataloader.dataset
+    #     dataset = DATASETS.build(val_dataset_cfg)
+
+    #     print(f"'{val_dataset_cfg.type}' 데이터셋에서 {len(dataset)}개의 샘플을 찾았습니다.")
+    #     print(f"최대 {num_samples}개의 샘플에 대해 시각화를 진행합니다...")
+
+    #     self.model.eval()
+    #     for i, data in enumerate(dataset):
+    #         if i >= num_samples: break
+
+    #         # 1. 모델 추론: 데이터로더의 출력을 직접 모델에 전달
+    #         # `inference_detector` 대신 model.test_step()을 모방하여 사용
+            
+    #         batched_data = {
+    #             'inputs': [[item] for item in data['inputs']],
+    #             'data_samples': [data['data_samples']]
+    #         }
+            
+    #         processed_data = self.model.data_preprocessor(batched_data, training=False )
+    #         predictions = self.model.forward(**processed_data, mode='predict')
+            
+    #         # 2. 결과 및 정보 추출
+    #         pred_sample = predictions[0] # 배치 크기가 1이므로 첫 번째 결과 사용
+    #         data_sample = data['data_samples']
+            
+    #         # 시각화를 위한 원본 RGB 이미지 경로 (리스트의 첫 번째 항목)
+    #         rgb_img_path = data_sample.img_path[0]
+    #         img_id = Path(rgb_img_path).stem
+    #         output_path = os.path.join(output_dir, f'{img_id}_GT_and_Pred.jpg')
+            
+    #         print(f"[{i+1}/{num_samples}] 처리 중: {img_id}")
+
+    #         # 3. 시각화용 원본 이미지들 로드 및 2x2 그리드 생성
+    #         images = self.load_multimodal_images(rgb_img_path)
+    #         if not images: continue
+    #         concat_img, img_shape = self.create_multimodal_concat(images)
+
+    #         # 4. 신뢰도 필터링된 예측 결과 추출
+    #         pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
+    #         pred_boxes = pred_instances.bboxes.cpu().numpy()
+    #         pred_labels = pred_instances.labels.cpu().numpy()
+
+    #         # 5. Ground Truth 정보 추출
+    #         gt_instances = data_sample.gt_instances
+    #         gt_boxes = gt_instances.bboxes.cpu().numpy()
+    #         gt_labels = gt_instances.labels.cpu().numpy()
+            
+    #         # 6. 박스 그리기 및 저장
+    #         result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, text_prefix="GT", base_color=(255, 255, 255))
+    #         result_img = self.draw_boxes(result_img, pred_boxes, pred_labels, img_shape, text_prefix="Pred")
+    #         result_img = self.add_modality_labels(result_img, img_shape)
+    #         cv2.imwrite(output_path, cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR))
+
+    #     print(f"\n시각화 완료! 결과는 '{output_dir}' 폴더에 저장되었습니다.")
+
+# multimodal_visualization.py 파일 내
+
     @torch.no_grad()
     def visualize_from_validation_set(self, output_dir: str, num_samples: int = 10, score_threshold: float = 0.3):
-        """
-        **Config 파일의 val_dataloader에서 얻은 텐서로 직접 추론하고 GT와 함께 시각화**
-        """
         os.makedirs(output_dir, exist_ok=True)
         val_dataset_cfg = self.cfg.val_dataloader.dataset
         dataset = DATASETS.build(val_dataset_cfg)
@@ -114,50 +174,67 @@ class SejongMultimodalVisualizer:
 
         self.model.eval()
         for i, data in enumerate(dataset):
-            if i >= num_samples: break
-
-            # 1. 모델 추론: 데이터로더의 출력을 직접 모델에 전달
-            # `inference_detector` 대신 model.test_step()을 모방하여 사용
+            if i >= num_samples:
+                break
             
+            # ==================== 👇 여기가 수정된 부분입니다 (핵심) 👇 ====================
+            
+            # 1. 원본 GT 정보를 사용하기 위해, 처리 전의 data_sample을 저장합니다.
+            original_data_sample = data['data_samples']
+
+            # 2. 단일 샘플 데이터를 "크기 1의 배치" 형태로 변환합니다.
             batched_data = {
                 'inputs': [[item] for item in data['inputs']],
-                'data_samples': [data['data_samples']]
+                'data_samples': [original_data_sample] # 처리 전 원본 data_sample 전달
             }
+
+            # 3. Data Preprocessor를 통해 '배치화된' 데이터 처리
+            processed_data = self.model.data_preprocessor(batched_data, training=False)
             
-            processed_data = self.model.data_preprocessor(batched_data, training=False )
+            # 4. 처리된 데이터를 모델의 forward에 전달
             predictions = self.model.forward(**processed_data, mode='predict')
+
+            # 5. 결과 및 정보 추출
+            pred_sample = predictions[0]  # 배치 크기가 1이므로 항상 첫 번째 결과 사용
             
-            # 2. 결과 및 정보 추출
-            pred_sample = predictions[0] # 배치 크기가 1이므로 첫 번째 결과 사용
-            data_sample = data['data_samples']
+            # 처리 후의 data_sample에서 scale_factor를 가져옵니다.
+            processed_data_sample = processed_data['data_samples'][0]
+            scale_factor = processed_data_sample.metainfo['scale_factor']
             
+            # 6. 신뢰도 필터링된 예측 결과 추출
+            pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
+            pred_boxes = pred_instances.bboxes.cpu().numpy()
+            pred_labels = pred_instances.labels.cpu().numpy()
+
+            # 7. (🔥 중요) 예측된 Bbox를 원본 이미지 크기로 다시 스케일링합니다.
+            if pred_boxes.shape[0] > 0:
+                # scale_factor (w_scale, h_scale)를 [w_s, h_s, w_s, h_s] 형태로 만들어 한번에 나눗셈
+                rescale_factor = np.tile(scale_factor, 2)
+                pred_boxes[:, :4] /= rescale_factor
+
+            gt_instances = original_data_sample.gt_instances 
+            gt_boxes = gt_instances.bboxes.cpu().numpy()
+            gt_labels = gt_instances.labels.cpu().numpy()
+            
+            # ============================================================================
+
             # 시각화를 위한 원본 RGB 이미지 경로 (리스트의 첫 번째 항목)
-            rgb_img_path = data_sample.img_path[0]
+            rgb_img_path = original_data_sample.img_path[0]
             img_id = Path(rgb_img_path).stem
             output_path = os.path.join(output_dir, f'{img_id}_GT_and_Pred.jpg')
             
             print(f"[{i+1}/{num_samples}] 처리 중: {img_id}")
 
-            # 3. 시각화용 원본 이미지들 로드 및 2x2 그리드 생성
+            # 시각화용 원본 이미지들 로드 및 2x2 그리드 생성
             images = self.load_multimodal_images(rgb_img_path)
             if not images: continue
             concat_img, img_shape = self.create_multimodal_concat(images)
 
-            # 4. 신뢰도 필터링된 예측 결과 추출
-            pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
-            pred_boxes = pred_instances.bboxes.cpu().numpy()
-            pred_labels = pred_instances.labels.cpu().numpy()
-
-            # 5. Ground Truth 정보 추출
-            gt_instances = data_sample.gt_instances
-            gt_boxes = gt_instances.bboxes.cpu().numpy()
-            gt_labels = gt_instances.labels.cpu().numpy()
-            
-            # 6. 박스 그리기 및 저장
+            # 박스 그리기 및 저장
             result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, text_prefix="GT", base_color=(255, 255, 255))
             result_img = self.draw_boxes(result_img, pred_boxes, pred_labels, img_shape, text_prefix="Pred")
             result_img = self.add_modality_labels(result_img, img_shape)
-            cv2.imwrite(output_path, cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(output_path, cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
 
         print(f"\n시각화 완료! 결과는 '{output_dir}' 폴더에 저장되었습니다.")
 
