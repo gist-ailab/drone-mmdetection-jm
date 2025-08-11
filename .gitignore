@@ -125,3 +125,5 @@ vis_results/
 
 # visualize
 *.mp4
+
+multimodal_inference_with_gt/

@@ -73,24 +73,58 @@ class SejongMultimodalVisualizer:
                 if len(img.shape) == 2: img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
                 grid_img[row*h:(row+1)*h, col*w:(col+1)*w] = img
         return grid_img, (h, w)
-
+    
     def draw_boxes(self, image: np.ndarray, boxes: np.ndarray, labels: np.ndarray,
-                   img_shape: Tuple[int, int], text_prefix: str, base_color: Tuple[int, int, int] = None) -> np.ndarray:
+                   img_shape: Tuple[int, int], text_prefix: str,
+                   box_format: str = 'xywh',  # 🔥 포맷을 지정하는 인자 추가!
+                   base_color: Tuple[int, int, int] = None) -> np.ndarray:
         """ GT 또는 Prediction 바운딩 박스를 이미지에 그리는 범용 함수 """
         h, w = img_shape
         modality_offsets = {'rgb': (0, 0), 'depth': (0, w), 'event': (h, 0), 'lidar': (h, w)}
+        
         for bbox, label in zip(boxes, labels):
-            x1, y1, x2, y2 = bbox.astype(int)
+            # ==================== 👇 여기가 수정된 부분입니다 👇 ====================
+            # box_format에 따라 좌표를 올바르게 계산
+            if box_format == 'xywh':
+                x, y, box_w, box_h = bbox.astype(int)
+                x1, y1, x2, y2 = x, y, x + box_w, y + box_h
+            elif box_format == 'xyxy':
+                x1, y1, x2, y2 = bbox.astype(int)
+            else:
+                raise ValueError(f"Unknown box_format: {box_format}")
+            # =================================================================
+
             class_name = self.classes[label]
             color = base_color if base_color else self.colors[label % len(self.colors)]
             label_text = f'{text_prefix}: {class_name}'
+            
             for offset_y, offset_x in modality_offsets.values():
                 x1_s, y1_s, x2_s, y2_s = x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y
+                
                 cv2.rectangle(image, (x1_s, y1_s), (x2_s, y2_s), color, 2)
+                
                 (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                 cv2.rectangle(image, (x1_s, y1_s - text_h - 5), (x1_s + text_w, y1_s), color, -1)
                 cv2.putText(image, label_text, (x1_s, y1_s - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                
         return image
+    # def draw_boxes(self, image: np.ndarray, boxes: np.ndarray, labels: np.ndarray,
+    #                img_shape: Tuple[int, int], text_prefix: str, base_color: Tuple[int, int, int] = None) -> np.ndarray:
+    #     """ GT 또는 Prediction 바운딩 박스를 이미지에 그리는 범용 함수 """
+    #     h, w = img_shape
+    #     modality_offsets = {'rgb': (0, 0), 'depth': (0, w), 'event': (h, 0), 'lidar': (h, w)}
+    #     for bbox, label in zip(boxes, labels):
+    #         x1, y1, x2, y2 = bbox.astype(int)
+    #         class_name = self.classes[label]
+    #         color = base_color if base_color else self.colors[label % len(self.colors)]
+    #         label_text = f'{text_prefix}: {class_name}'
+    #         for offset_y, offset_x in modality_offsets.values():
+    #             x1_s, y1_s, x2_s, y2_s = x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y
+    #             cv2.rectangle(image, (x1_s, y1_s), (x2_s, y2_s), color, 2)
+    #             (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    #             cv2.rectangle(image, (x1_s, y1_s - text_h - 5), (x1_s + text_w, y1_s), color, -1)
+    #             cv2.putText(image, label_text, (x1_s, y1_s - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    #     return image
 
     def add_modality_labels(self, concat_img: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
         """ 각 모달리티 영역에 라벨 추가 """
@@ -231,8 +265,12 @@ class SejongMultimodalVisualizer:
             concat_img, img_shape = self.create_multimodal_concat(images)
 
             # 박스 그리기 및 저장
-            result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, text_prefix="GT", base_color=(255, 255, 255))
-            result_img = self.draw_boxes(result_img, pred_boxes, pred_labels, img_shape, text_prefix="Pred")
+            # result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, text_prefix="GT", base_color=(255, 255, 255))
+            # result_img = self.draw_boxes(concat_img, pred_boxes, pred_labels, img_shape, text_prefix="Pred")
+            result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, 
+                                text_prefix="GT", base_color=(255, 255, 255), box_format='xywh')
+            result_img = self.draw_boxes(result_img, pred_boxes, pred_labels, img_shape, 
+                                         text_prefix="Pred", box_format='xyxy')
             result_img = self.add_modality_labels(result_img, img_shape)
             cv2.imwrite(output_path, cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
 
@@ -241,11 +279,11 @@ class SejongMultimodalVisualizer:
 def main():
     # ... (main 함수는 변경 없음) ...
     parser = argparse.ArgumentParser(description='Sejong Multimodal Detection Visualization based on Validation Set')
-    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/lecun-sejong2504_cmnext_rcnn_lr0.01_ep50.py', help='모델 config 파일 경로')
-    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnext_b2_faster_rcnn_2x_cosinelr0.01_ep50/best_coco_bbox_mAP_epoch_50.pth', help='모델 weight 파일 경로')
+    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/lecun-sejong2504_cmnext_rcnn_lr0.01_ep50_v3.py', help='모델 config 파일 경로')
+    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnext_b2_rcnn_multigpu_v3/best_coco_bbox_mAP_epoch_5.pth', help='모델 weight 파일 경로')
     parser.add_argument('--output-dir', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/multimodal_inference_with_gt', help='시각화 결과 저장 디렉토리')
-    parser.add_argument('--num-samples', type=int, default=20, help='시각화할 샘플 수')
-    parser.add_argument('--score-threshold', type=float, default=0.5, help='신뢰도 임계값')
+    parser.add_argument('--num-samples', type=int, default=100, help='시각화할 샘플 수')
+    parser.add_argument('--score-threshold', type=float, default=0.3, help='신뢰도 임계값')
     parser.add_argument('--device', default='cuda:0', help='사용할 디바이스')
     args = parser.parse_args()
     
