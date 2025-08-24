@@ -338,7 +338,6 @@ class ListDataPreprocessor(ImgDataPreprocessor):
             
             # Option 1: Fix by adding minimum size
             min_size = 1.0
-            
             # Fix width (x2 <= x1)
             if invalid_width_mask.any():
                 bboxes[invalid_width_mask, 2] = bboxes[invalid_width_mask, 0] + min_size

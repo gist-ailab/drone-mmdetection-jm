@@ -696,16 +696,8 @@ class CMNeXt(nn.Module):
                 for i, modal in enumerate(modal_list):
                     if i < len(x_scores):
                         a_dict[f"stage1_score_{modal}"] = x_scores[i].mean().item()
-                # wandb.log(a_dict)
-                wandb.log({
-                    "stage1_scores": wandb.plot.line_series(
-                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
-                        ys=[list(a_dict.values())],         # y축 값들
-                        keys=list(a_dict.keys()),           # legend label
-                        title="Stage1 Scores",
-                        xname="modal index"
-                    )
-                })
+                wandb.log(a_dict)
+
                 if self.iter % 500 ==0:
                     vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=f"./wandb_img_PPx.png")
                     wandb.log({"stage1_PPX": wandb.Image(f"./wandb_img_PPx.png")})
@@ -738,16 +730,8 @@ class CMNeXt(nn.Module):
                 for i, modal in enumerate(modal_list):
                     if i < len(x_scores):
                         a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                # wandb.log(a_dict)
-                wandb.log({
-                    "stage2_scores": wandb.plot.line_series(
-                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
-                        ys=[list(a_dict.values())],         # y축 값들
-                        keys=list(a_dict.keys()),           # legend label
-                        title="Stage1 Scores",
-                        xname="modal index"
-                    )
-                })
+                wandb.log(a_dict)
+ 
                 if self.iter % 500 ==0:
                     vis_tensor_single_batch_grid(x2_f_, batch=0, save_path=f"./wandb_img_PPx.png")
                     wandb.log({"stage2_PPX": wandb.Image(f"./wandb_img_PPx.png")})
@@ -781,16 +765,8 @@ class CMNeXt(nn.Module):
                 for i, modal in enumerate(modal_list):
                     if i < len(x_scores):
                         a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                # wandb.log(a_dict)
-                wandb.log({
-                    "stage3_scores": wandb.plot.line_series(
-                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
-                        ys=[list(a_dict.values())],         # y축 값들
-                        keys=list(a_dict.keys()),           # legend label
-                        title="Stage1 Scores",
-                        xname="modal index"
-                    )
-                })
+                wandb.log(a_dict)
+
                 if self.iter % 500 ==0:
                     vis_tensor_single_batch_grid(x3_f_, batch=0, save_path=f"./wandb_img_PPx.png")
                     wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})
@@ -823,16 +799,8 @@ class CMNeXt(nn.Module):
                 for i, modal in enumerate(modal_list):
                     if i < len(x_scores):
                         a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                # wandb.log(a_dict)
-                wandb.log({
-                    "stage4_scores": wandb.plot.line_series(
-                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
-                        ys=[list(a_dict.values())],         # y축 값들
-                        keys=list(a_dict.keys()),           # legend label
-                        title="Stage1 Scores",
-                        xname="modal index"
-                    )
-                })
+                wandb.log(a_dict)
+
                 if self.iter % 500 ==0:
                     vis_tensor_single_batch_grid(x4_f_, batch=0, save_path=f"./wandb_img_PPx.png")
                     wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})

@@ -177,11 +177,11 @@ class DELIVERResize:
         """Apply resize to all modalities."""
         if isinstance(results['img'], list):
             ori_shape = results['img'][0].shape[:2]  # (H, W)
+            ori_shape = ori_shape[::-1]  # (W, H) for mmcv compatibility
             target_scale = self._get_target_scale(ori_shape)
             
             if self.keep_ratio:
                 new_shape, scale_factor = mmcv.rescale_size(ori_shape, target_scale, return_scale=True)
-                new_shape = (new_shape[1], new_shape[0])  # (W, H)
             else:
                 new_shape = target_scale
                 scale_factor = (target_scale[1] / ori_shape[1], target_scale[0] / ori_shape[0])
@@ -191,7 +191,7 @@ class DELIVERResize:
                 resized_img = self._resize_img(img, new_shape)
                 resized_imgs.append(resized_img)
             
-            scale_x, scale_y = scale_factor
+            scale_x, scale_y = scale_factor, scale_factor
             results['img'] = resized_imgs
             results['img_shape'] = resized_imgs[0].shape[:2]
             results['scale_factor'] = (scale_factor, scale_factor)
