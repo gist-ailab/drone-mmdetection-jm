@@ -17,6 +17,11 @@ import functools
 from functools import partial
 import warnings
 import torch.nn.functional as F
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # 비-인터랙티브 백엔드 설정
+
+
 
 
 def load_dualpath_model(model, model_file):
@@ -589,6 +594,7 @@ cmnext_settings = {
 class CMNeXt(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
+        self.iter = 0
         assert model_name in cmnext_settings.keys(), f"Model name should be in {list(cmnext_settings.keys())}"
         embed_dims, depths = cmnext_settings[model_name]
         extra_depths = depths 
@@ -656,13 +662,14 @@ class CMNeXt(nn.Module):
                 FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
 
     def tokenselect(self, x_ext, module):    
-        x_scores = module(x_ext) 
+        x_scores = module(x_ext)                            #score 에서 token을 선택
         for i in range(len(x_ext)):
             x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
         x_f = functools.reduce(torch.max, x_ext)
-        return x_f
+        return x_f, x_scores
      
     def forward(self, x: list) -> list:
+        modal_list = ["depth", "ir", "lidar"]
         x_cam = x[0]        
         if self.num_modals > 0:
             x_ext = x[1:]
@@ -675,12 +682,38 @@ class CMNeXt(nn.Module):
         x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[0](x_ext)
-            x_f = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            
             for blk in self.extra_block1:
                 x_f = blk(x_f)
-            x1_f = self.extra_norm1(x_f)
-            x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f)
+            x1_f_ = self.extra_norm1(x_f)
+            x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f_)
             x_fused = self.FFMs[0](x1_cam, x1_f)
+            
+            if x_scores is not None and self.training: 
+                import wandb
+                a_dict = {}
+                for i, modal in enumerate(modal_list):
+                    if i < len(x_scores):
+                        a_dict[f"stage1_score_{modal}"] = x_scores[i].mean().item()
+                # wandb.log(a_dict)
+                wandb.log({
+                    "stage1_scores": wandb.plot.line_series(
+                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
+                        ys=[list(a_dict.values())],         # y축 값들
+                        keys=list(a_dict.keys()),           # legend label
+                        title="Stage1 Scores",
+                        xname="modal index"
+                    )
+                })
+                if self.iter % 500 ==0:
+                    vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=f"./wandb_img_PPx.png")
+                    wandb.log({"stage1_PPX": wandb.Image(f"./wandb_img_PPx.png")})
+                    vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=f"./wandb_img_FRM.png")
+                    wandb.log({"stage1_FRM": wandb.Image(f"./wandb_img_FRM.png")})
+                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
+                    wandb.log({"stage1_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
         else:
@@ -693,13 +726,36 @@ class CMNeXt(nn.Module):
         x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block2:
                 x_f = blk(x_f)
-            
-            x2_f = self.extra_norm2(x_f)
-            x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f)
+            x2_f_ = self.extra_norm2(x_f)
+            x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
             x_fused = self.FFMs[1](x2_cam, x2_f)
+            if x_scores is not None and self.training: 
+                import wandb
+                a_dict = {}
+                for i, modal in enumerate(modal_list):
+                    if i < len(x_scores):
+                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
+                # wandb.log(a_dict)
+                wandb.log({
+                    "stage2_scores": wandb.plot.line_series(
+                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
+                        ys=[list(a_dict.values())],         # y축 값들
+                        keys=list(a_dict.keys()),           # legend label
+                        title="Stage1 Scores",
+                        xname="modal index"
+                    )
+                })
+                if self.iter % 500 ==0:
+                    vis_tensor_single_batch_grid(x2_f_, batch=0, save_path=f"./wandb_img_PPx.png")
+                    wandb.log({"stage2_PPX": wandb.Image(f"./wandb_img_PPx.png")})
+                    vis_tensor_single_batch_grid(x2_cam, batch=0, save_path=f"./wandb_img_FRM.png")
+                    wandb.log({"stage2_FRM": wandb.Image(f"./wandb_img_FRM.png")})
+                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
+                    wandb.log({"stage2_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
         else:
@@ -712,13 +768,36 @@ class CMNeXt(nn.Module):
         x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f = self.tokenselect(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block3:
                 x_f = blk(x_f)
             
-            x3_f = self.extra_norm3(x_f)
-            x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f)
+            x3_f_ = self.extra_norm3(x_f)
+            x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
             x_fused = self.FFMs[2](x3_cam, x3_f)
+            if x_scores is not None and self.training: 
+                import wandb
+                a_dict = {}
+                for i, modal in enumerate(modal_list):
+                    if i < len(x_scores):
+                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
+                # wandb.log(a_dict)
+                wandb.log({
+                    "stage3_scores": wandb.plot.line_series(
+                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
+                        ys=[list(a_dict.values())],         # y축 값들
+                        keys=list(a_dict.keys()),           # legend label
+                        title="Stage1 Scores",
+                        xname="modal index"
+                    )
+                })
+                if self.iter % 500 ==0:
+                    vis_tensor_single_batch_grid(x3_f_, batch=0, save_path=f"./wandb_img_PPx.png")
+                    wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})
+                    vis_tensor_single_batch_grid(x3_cam, batch=0, save_path=f"./wandb_img_FRM.png")
+                    wandb.log({"stage3_FRM": wandb.Image(f"./wandb_img_FRM.png")})
+                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
+                    wandb.log({"stage3_FFM": wandb.Image(f"./wandb_img_FFM.png")})
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
         else:
@@ -731,15 +810,125 @@ class CMNeXt(nn.Module):
         x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block4:
                 x_f = blk(x_f)
             
-            x4_f = self.extra_norm4(x_f)
-            x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f)
+            x4_f_ = self.extra_norm4(x_f)
+            x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
             x_fused = self.FFMs[3](x4_cam, x4_f)
+            if x_scores is not None and self.training: 
+                import wandb
+                a_dict = {}
+                for i, modal in enumerate(modal_list):
+                    if i < len(x_scores):
+                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
+                # wandb.log(a_dict)
+                wandb.log({
+                    "stage4_scores": wandb.plot.line_series(
+                        xs=[list(range(len(a_dict)))],      # x축 (예: index)
+                        ys=[list(a_dict.values())],         # y축 값들
+                        keys=list(a_dict.keys()),           # legend label
+                        title="Stage1 Scores",
+                        xname="modal index"
+                    )
+                })
+                if self.iter % 500 ==0:
+                    vis_tensor_single_batch_grid(x4_f_, batch=0, save_path=f"./wandb_img_PPx.png")
+                    wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})
+                    vis_tensor_single_batch_grid(x4_cam, batch=0, save_path=f"./wandb_img_FRM.png")
+                    wandb.log({"stage3_FRM": wandb.Image(f"./wandb_img_FRM.png")})
+                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
+                    wandb.log({"stage3_FFM": wandb.Image(f"./wandb_img_FFM.png")})
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
 
         return outs
+
+def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.png'):
+    """
+    Visualize all 12 channels of a tensor in a 4x3 grid with Grad-CAM style colormap (jet).
+    
+    Args:
+        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
+        batch (int): Batch index if tensor has a batch dimension.
+        save_path (str): Path to save the grid image.
+    """
+    import matplotlib.pyplot as plt
+    # Handle batch dimension
+    if tensor.dim() == 4:  # (B, C, H, W)
+        tensor = tensor[batch]
+    
+    C, H, W = tensor.shape
+    assert C > 12, "Tensor must have 12 channels"
+    
+    tensor_np = tensor.detach().cpu().numpy()
+    
+    # Normalize each channel to [0,1] for better colormap visualization
+    tensor_np = (tensor_np - tensor_np.min(axis=(1,2), keepdims=True)) / \
+                (tensor_np.max(axis=(1,2), keepdims=True) - tensor_np.min(axis=(1,2), keepdims=True) + 1e-8)
+    
+    # Create 4x3 subplot
+    fig, axes = plt.subplots(3, 4, figsize=(16, 12))
+    for i in range(12):
+        r, c = divmod(i, 4)
+        axes[r, c].imshow(tensor_np[i], cmap='jet')
+        axes[r, c].axis('off')
+        axes[r, c].set_title(f'Channel {i}')
+    
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    print(f"Saved 12-channel Grad-CAM style grid to {save_path}")
+    
+    
+    
+def vis_tensor_single_batch(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    tensor = tensor[batch]
+    if len(tensor.shape) != 3:
+        assert "Tensor must have 3 dimensions (C, H, W)"
+    C, H, W = tensor.shape
+    tensor_np = tensor.detach().cpu().numpy()
+    tensor_np = (tensor_np - tensor_np.min()) / (tensor_np.max() - tensor_np.min() + 1e-8)  # Normalize to [0, 1]
+    tensor_np = (tensor_np * 255).astype(np.uint8)  # Convert to uint8 for visualization
+    # Create a grid of images
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.imshow(tensor_np.transpose(1, 2, 0))  # Transpose to (H, W, C)
+    ax.axis('off')
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    
+    
+def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    tensor = tensor[batch]
+    tensor_np = tensor.detach().cpu().numpy()
+    C, H, W = tensor_np.shape
+    ncols = int(np.ceil(np.sqrt(C)))
+    nrows = int(np.ceil(C / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
+    axes = axes.flatten()
+    
+    for i in range(C):
+        ch = tensor_np[i]
+        axes[i].imshow(ch, cmap='jet')
+        axes[i].axis('off')
+        axes[i].set_title(f"Channel {i}", fontsize=10)
+    
+    # Hide unused axes
+    for j in range(C, len(axes)):
+        axes[j].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    print(f"Saved tensor visualization grid to {save_path}")
+    
+
+    

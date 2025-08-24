@@ -56,7 +56,8 @@ model = dict(
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        # pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
         type='FPN',
@@ -160,7 +161,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=2,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -199,6 +200,8 @@ val_evaluator = dict(
 
 # Training schedule
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=50, val_interval=5)
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
 
 param_scheduler = [
     dict(
@@ -216,10 +219,6 @@ param_scheduler = [
         eta_min=1e-6)
 ]
 
-# optim_wrapper = dict(
-#     type='OptimWrapper',
-#     optimizer=dict(type='AdamW', lr=0.0001, weight_decay=0.05), # 🔥 AdamW 옵티마이저 변경
-#     clip_grad=dict(max_norm=1.0, norm_type=2))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
@@ -227,11 +226,68 @@ optim_wrapper = dict(
     accumulative_counts=4
 )
 
-# Hooks, Logger, Visualizer (기존 설정 유지)
-default_hooks = _base_.default_hooks
-log_processor = _base_.log_processor
-vis_backends = _base_.vis_backends
-visualizer = _base_.visualizer
+
+# # Hooks, Logger, Visualizer (기존 설정 유지)
+# default_hooks = _base_.default_hooks
+# log_processor = _base_.log_processor
+# vis_backends = _base_.vis_backends
+# visualizer = _base_.visualizer
+
+vis_backends = [
+    dict(type='LocalVisBackend'),
+    dict(
+        type='WandbVisBackend',
+        init_kwargs=dict(
+            project='DELIVER',
+            name='DEBUG- lecun-deliver_stitchfusion_rcnn_lr0.01_0615',
+            tags=['debuggin', 'Stitfusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            notes='Stitfusion RCNN with epoch 50 SGD',
+            save_code=True
+        ),
+    )
+]
+
+# ✅ Standard hooks configuration
+default_hooks = dict(
+    timer=dict(type='IterTimerHook'),
+    logger=dict(
+        type='LoggerHook', 
+        interval=50,
+        log_metric_by_epoch=True,
+        out_suffix='.log'
+    ),
+    param_scheduler=dict(type='ParamSchedulerHook'),
+    checkpoint=dict(
+        type='CheckpointHook', 
+        interval=10,
+        save_best='auto',
+        max_keep_ckpts=3
+    ),
+    sampler_seed=dict(type='DistSamplerSeedHook'),
+    visualization=dict(
+        type='DetVisualizationHook',
+        draw=False,          # 시각화 비활성화 (성능 향상)
+        interval=500,        # 간격 늘림
+        show=False,
+        wait_time=0.01
+    )
+)
+
+# ✅ Simplified log processor
+log_processor = dict(
+    type='LogProcessor', 
+    window_size=50, 
+    by_epoch=True
+)
+
+# ✅ Visualizer 설정
+visualizer = dict(
+    type='DetLocalVisualizer', 
+    vis_backends=vis_backends, 
+    name='visualizer'
+)
+
+
 
 # Experiment name
 experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'

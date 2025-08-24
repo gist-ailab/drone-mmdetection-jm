@@ -10,6 +10,13 @@ from mmdet.datasets.transforms import Resize, RandomCrop, RandomFlip
 from typing import Dict, List, Tuple, Union, Optional
 import copy
 
+import mmengine
+import numpy as np
+import random
+from mmdet.datasets.transforms.transforms import BaseTransform
+from mmdet.registry import TRANSFORMS
+from typing import Sequence, Union, Tuple, Dict, List
+
 # Safe import for HorizontalBoxes
 try:
     from mmdet.structures.bbox import HorizontalBoxes
@@ -467,15 +474,8 @@ class DELIVERRandomFlip:
         return results
     
 
-# Add this to mcdet/datasets/transforms/deliver_transforms.py
-# Add this to mcdet/datasets/transforms/deliver_transforms.py
 
-import mmengine
-import numpy as np
-import random
-from mmdet.datasets.transforms.transforms import BaseTransform
-from mmdet.registry import TRANSFORMS
-from typing import Sequence, Union, Tuple, Dict, List
+
 
 
 
