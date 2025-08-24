@@ -181,16 +181,11 @@ class DELIVERResize:
             
             if self.keep_ratio:
                 new_shape, scale_factor = mmcv.rescale_size(ori_shape, target_scale, return_scale=True)
+                new_shape = (new_shape[1], new_shape[0])  # (W, H)
             else:
                 new_shape = target_scale
                 scale_factor = (target_scale[1] / ori_shape[1], target_scale[0] / ori_shape[0])
             
-            if isinstance(scale_factor, (int, float)):
-                scale_x = scale_y = float(scale_factor)
-            else:
-                scale_x, scale_y = scale_factor[0], scale_factor[1]
-            
-            # Resize all modality images
             resized_imgs = []
             for img in results['img']:
                 resized_img = self._resize_img(img, new_shape)
@@ -198,7 +193,7 @@ class DELIVERResize:
             
             results['img'] = resized_imgs
             results['img_shape'] = resized_imgs[0].shape[:2]
-            results['scale_factor'] = (scale_x, scale_y)
+            results['scale_factor'] = (scale_factor, scale_factor)
             
             # 🔥 bbox format에 따라 다른 함수 사용
             if 'gt_bboxes' in results:

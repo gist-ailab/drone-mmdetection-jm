@@ -18,7 +18,7 @@ train_pipeline = [
         type='DELIVERResize',
         # 🔥 원본 비율(640x480)을 고려한 Multi-scale 학습. (H, W) 순서.
         #    모델이 다양한 크기의 객체를 학습하여 성능 향상에 도움이 됩니다.
-        img_scale=[(640, 480), (852, 640)], # 4:3 비율 유지
+        img_scale=[(480, 640),  (640, 852)], # 4:3 비율 유지
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -35,7 +35,7 @@ test_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(
         type='DELIVERResize',
-        img_scale=(640, 480), # 🔥 (H, W) 순서로 원본 비율 고정
+        img_scale=(480, 640), # 🔥 (H, W) 순서로 원본 비율 고정
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -161,7 +161,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=8,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
