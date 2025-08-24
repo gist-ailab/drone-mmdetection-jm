@@ -191,9 +191,11 @@ class DELIVERResize:
                 resized_img = self._resize_img(img, new_shape)
                 resized_imgs.append(resized_img)
             
+            scale_x, scale_y = scale_factor
             results['img'] = resized_imgs
             results['img_shape'] = resized_imgs[0].shape[:2]
             results['scale_factor'] = (scale_factor, scale_factor)
+            
             
             # 🔥 bbox format에 따라 다른 함수 사용
             if 'gt_bboxes' in results:
