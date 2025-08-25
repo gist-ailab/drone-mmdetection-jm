@@ -20,6 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # 비-인터랙티브 백엔드 설정
+import torch.distributed as dist
 
 
 
@@ -691,20 +692,25 @@ class CMNeXt(nn.Module):
             x_fused = self.FFMs[0](x1_cam, x1_f)
             
             if x_scores is not None and self.training: 
-                import wandb
-                a_dict = {}
-                for i, modal in enumerate(modal_list):
-                    if i < len(x_scores):
-                        a_dict[f"stage1_score_{modal}"] = x_scores[i].mean().item()
-                wandb.log(a_dict)
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage1_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
 
-                if self.iter % 500 ==0:
-                    vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=f"./wandb_img_PPx.png")
-                    wandb.log({"stage1_PPX": wandb.Image(f"./wandb_img_PPx.png")})
-                    vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=f"./wandb_img_FRM.png")
-                    wandb.log({"stage1_FRM": wandb.Image(f"./wandb_img_FRM.png")})
-                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
-                    wandb.log({"stage1_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+                    if self.iter % 500 ==0:
+                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
+                        wandb.log({"stage1_PPX": wandb.Image(ppx_save_path)})
+                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
+                        wandb.log({"stage1_FRM": wandb.Image(frm_save_path)})
+                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
+                        wandb.log({"stage1_FFM": wandb.Image(ffm_save_path)})
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
@@ -724,21 +730,26 @@ class CMNeXt(nn.Module):
             x2_f_ = self.extra_norm2(x_f)
             x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
             x_fused = self.FFMs[1](x2_cam, x2_f)
-            if x_scores is not None and self.training: 
-                import wandb
-                a_dict = {}
-                for i, modal in enumerate(modal_list):
-                    if i < len(x_scores):
-                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                wandb.log(a_dict)
- 
-                if self.iter % 500 ==0:
-                    vis_tensor_single_batch_grid(x2_f_, batch=0, save_path=f"./wandb_img_PPx.png")
-                    wandb.log({"stage2_PPX": wandb.Image(f"./wandb_img_PPx.png")})
-                    vis_tensor_single_batch_grid(x2_cam, batch=0, save_path=f"./wandb_img_FRM.png")
-                    wandb.log({"stage2_FRM": wandb.Image(f"./wandb_img_FRM.png")})
-                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
-                    wandb.log({"stage2_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+            if x_scores is not None and self.training:
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage2_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+    
+                    if self.iter % 500 ==0:
+                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
+                        wandb.log({"stage2_PPX": wandb.Image(ppx_save_path)})
+                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
+                        wandb.log({"stage2_FRM": wandb.Image(frm_save_path)})
+                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
+                        wandb.log({"stage2_FFM": wandb.Image(ffm_save_path)})
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
@@ -760,20 +771,26 @@ class CMNeXt(nn.Module):
             x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
             x_fused = self.FFMs[2](x3_cam, x3_f)
             if x_scores is not None and self.training: 
-                import wandb
-                a_dict = {}
-                for i, modal in enumerate(modal_list):
-                    if i < len(x_scores):
-                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                wandb.log(a_dict)
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
 
-                if self.iter % 500 ==0:
-                    vis_tensor_single_batch_grid(x3_f_, batch=0, save_path=f"./wandb_img_PPx.png")
-                    wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})
-                    vis_tensor_single_batch_grid(x3_cam, batch=0, save_path=f"./wandb_img_FRM.png")
-                    wandb.log({"stage3_FRM": wandb.Image(f"./wandb_img_FRM.png")})
-                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
-                    wandb.log({"stage3_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage3_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+
+                    if self.iter % 500 ==0:
+                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
+                        wandb.log({"stage3_PPX": wandb.Image(ppx_save_path)})
+                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
+                        wandb.log({"stage3_FRM": wandb.Image(frm_save_path)})
+                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
+                        wandb.log({"stage3_FFM": wandb.Image(ffm_save_path)})
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
         else:
@@ -794,20 +811,26 @@ class CMNeXt(nn.Module):
             x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
             x_fused = self.FFMs[3](x4_cam, x4_f)
             if x_scores is not None and self.training: 
-                import wandb
-                a_dict = {}
-                for i, modal in enumerate(modal_list):
-                    if i < len(x_scores):
-                        a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                wandb.log(a_dict)
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
 
-                if self.iter % 500 ==0:
-                    vis_tensor_single_batch_grid(x4_f_, batch=0, save_path=f"./wandb_img_PPx.png")
-                    wandb.log({"stage3_PPX": wandb.Image(f"./wandb_img_PPx.png")})
-                    vis_tensor_single_batch_grid(x4_cam, batch=0, save_path=f"./wandb_img_FRM.png")
-                    wandb.log({"stage3_FRM": wandb.Image(f"./wandb_img_FRM.png")})
-                    vis_tensor_single_batch_grid(x_fused, batch=0, save_path=f"./wandb_img_FFM.png")
-                    wandb.log({"stage3_FFM": wandb.Image(f"./wandb_img_FFM.png")})
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage4_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+
+                    if self.iter % 500 ==0:
+                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
+                        wandb.log({"stage4_PPX": wandb.Image(ppx_save_path)})
+                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
+                        wandb.log({"stage4_FRM": wandb.Image(frm_save_path)})
+                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
+                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
+                        wandb.log({"stage4_FFM": wandb.Image(ffm_save_path)})
             outs.append(x_fused)
         else:
             outs.append(x4_cam)

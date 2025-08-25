@@ -161,7 +161,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=4,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -239,8 +239,8 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='DEBUG- lecun-deliver_stitchfusion_rcnn_lr0.01_0615',
-            tags=['debuggin', 'Stitfusion', 'RCNN', 'full-finetune', 'epoch-50'],
+            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
+            tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
         ),
