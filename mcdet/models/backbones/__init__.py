@@ -11,6 +11,7 @@ from .cmnext import CMNextBackbone
 from .stitchfusion import StitchFusionBackbone
 from .custom_resnet import ATTResNet
 from .geminifusion import GeminiFusionBackbone
+from .cmnext_masked import CMNextMaskedBackbone
 # from .base_backbone import BaseBackbone
 
 

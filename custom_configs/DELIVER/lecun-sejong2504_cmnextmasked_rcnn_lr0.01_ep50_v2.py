@@ -23,6 +23,12 @@ train_pipeline = [
         bbox_format='xywh'
     ),
     dict(
+        type = 'DELIVERRandomMasking',
+        masking_index=[0,1,2,3],
+        mask_ratio = 0.3,
+        patch_size=4,
+    ),
+    dict(
         type='DELIVERRandomFlip',
         prob=0.5,
         bbox_format='xywh'
@@ -51,8 +57,8 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='CMNeXBackbone',
+        backbone='CMNeX-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
@@ -239,7 +245,7 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
+            name='sejong2504_cmnextmasked_b2_rcnn_multiscale_v2',
             tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
@@ -293,5 +299,5 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
+experiment_name = 'sejong2504_cmnextmasked_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'

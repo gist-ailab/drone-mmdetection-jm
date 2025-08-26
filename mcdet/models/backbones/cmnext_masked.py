@@ -1,4 +1,4 @@
-# mcdet/models/backbones/cmnext.py
+# mcdet/models/backbones/cmnext_masked.py
 
 import torch
 import math
@@ -22,12 +22,10 @@ import matplotlib
 matplotlib.use('Agg')  # 비-인터랙티브 백엔드 설정
 import torch.distributed as dist
 
-
 try:
     import wandb
 except ImportError:
     wandb = None
-    
     
 
 def load_dualpath_model(model, model_file):
@@ -157,7 +155,7 @@ class CMNextBaseModel(BaseModule):
 
 
 @MODELS.register_module()
-class CMNextBackbone(BaseModule):
+class CMNextMaskedBackbone(BaseModule):
     """CMNext backbone for multimodal object detection.
     
     This backbone processes multimodal inputs (RGB, Depth, Event, LiDAR) 
@@ -173,7 +171,7 @@ class CMNextBackbone(BaseModule):
     """
     
     def __init__(self,
-                 backbone: str = 'CMNeXt-B2',
+                 backbone: str = 'CMNeXtMasked-B2',
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  out_indices: Tuple[int] = (0, 1, 2, 3),
                  frozen_stages: int = -1,
@@ -597,7 +595,7 @@ cmnext_settings = {
 }
 
 
-class CMNeXt(nn.Module):
+class CMNeXtMasked(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
         self.iter = 0

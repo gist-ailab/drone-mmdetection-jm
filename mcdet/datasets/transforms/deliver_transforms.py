@@ -208,14 +208,12 @@ class DELIVERResize:
                 for instance in results['instances']:
                     if 'bbox' in instance:
                         bbox = np.array(instance['bbox'], dtype=np.float32)
-                        
                         if self.bbox_format == 'xywh':
                             # xywh format
                             bbox[0] *= scale_x  # x
                             bbox[1] *= scale_y  # y
                             bbox[2] *= scale_x  # width
                             bbox[3] *= scale_y  # height
-                            
                             if self.bbox_clip_border:
                                 bbox[0] = np.clip(bbox[0], 0, new_shape[1])
                                 bbox[1] = np.clip(bbox[1], 0, new_shape[0])
@@ -587,3 +585,92 @@ class DELIVERRandomChoice(BaseTransform):
         repr_str += f'(num_pipelines={len(self.transforms)}'
         repr_str += f', prob={self.prob})'
         return repr_str
+    
+    
+    
+class DELIVERRandomMasking(BaseTransform):
+    '''Random mask for specific modality'''
+    def __init__(self,
+                 masking_index: list=[0,1,2,3],
+                 mask_ratio : float=0.3,
+                 patch_size : int=4 ):
+        assert 0.0 < mask_ratio < 1.0
+        self.masking_index = masking_index
+        self.mask_ratio = mask_ratio
+        self.patch_size = patch_size
+        
+    def __call__(self, results: dict) -> dict:
+        transformed_results = copy.deepcopy(results)
+        for idx in len(self.masking_idx):
+            img = transformed_results['img'][self.masking_index[idx]]
+            h, w = img.shape[:2]
+            
+            ph, pw = self.patch_size, self.patch_size
+            gh, gw = h // ph, w // pw
+            
+            h_patches = h // self.patch_size
+            w_patches = w // self.patch_size
+            num_patches = h_patches * w_patches
+            num_mask = int(self.mask_ratio * num_patches)
+            mask_indices = np.random.permutation(num_patches)[:num_mask]
+
+            for idx in mask_indices:
+                # 1D 인덱스를 2D 그리드 좌표(행, 열)로 변환
+                patch_row = idx // w_patches
+                patch_col = idx % w_patches
+                
+                # 실제 이미지 픽셀 좌표 계산
+                y_start = patch_row * self.patch_size
+                x_start = patch_col * self.patch_size
+                
+                # 해당 패치 영역을 0으로 만듦
+                img[y_start : y_start + self.patch_size, 
+                        x_start : x_start + self.patch_size, :] = 0
+            transformed_results['img'][self.masking_index[idx]] = img
+        return transformed_results
+    
+    
+class DELIVERModalityDropout(BaseTransform):
+    """Randomly drop (zero out) one or more modalities during training.
+
+    This acts as a powerful data augmentation and regularization technique to
+    prevent the model from overfitting to a specific modality.
+
+    Args:
+        p (float): The probability of dropping each modality independently.
+            Defaults to 0.3.
+        modality_indices (List[int]): A list of indices for the modalities
+            that are candidates for being dropped. Typically, the RGB modality
+            (index 0) is excluded.
+    """
+
+    def __init__(self,
+                 p: float = 0.3,
+                 modality_indices: List[int] = [1, 2, 3]):
+        if not 0.0 <= p <= 1.0:
+            raise ValueError(f'Probability `p` must be between 0 and 1, but got {p}')
+        if not modality_indices:
+            raise ValueError('`modality_indices` cannot be empty.')
+            
+        self.p = p
+        self.modality_indices = modality_indices
+
+    def transform(self, results: dict) -> dict:
+        """Apply the modality dropout transform.
+
+        Args:
+            results (dict): The result dict from the data loading pipeline.
+
+        Returns:
+            dict: The results dict with randomly dropped modalities.
+        """
+        # Iterate through the candidate modalities
+        for index in self.modality_indices:
+            # Drop the modality with probability p
+            if random.random() < self.p:
+                # Get the image tensor to be dropped
+                img_to_drop = results['img'][index]
+                # Replace it with a tensor of zeros of the same shape and type
+                results['img'][index] = np.zeros_like(img_to_drop)
+
+        return results
