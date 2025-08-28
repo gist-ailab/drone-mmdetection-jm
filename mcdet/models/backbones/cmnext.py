@@ -668,15 +668,11 @@ class CMNeXt(nn.Module):
 
     def tokenselect(self, x_ext, module):    
         x_scores = module(x_ext)                            #score 에서 token을 선택
-        # stacked_scores = torch.stack(x_scores, dim=0)  # (num_modals, B, 1, H, W)
-        # winner_indices = torch.argmax(stacked_scores, dim=0)  # (B, 1, H, W)
-        stacked_scores = torch.cat(x_scores, dim=1)  # (B, num_modals, H, W)
-        winner_indices = torch.argmax(stacked_scores, dim=1, keepdim=True)  # (B, 1, H, W)
-    
         for i in range(len(x_ext)):
             x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
-        x_f = functools.reduce(torch.max, x_ext)
-        return x_f, x_scores, winner_indices
+        stacked_x_ext = torch.stack(x_ext, dim=1) 
+        x_f, x_f_indices = torch.max(stacked_x_ext, dim=1) 
+        return x_f, x_scores, x_f_indices
      
     def forward(self, x: list) -> list:
         modal_list = ["depth", "ir", "lidar"]
@@ -709,8 +705,7 @@ class CMNeXt(nn.Module):
                         if i < len(x_scores):
                             a_dict[f"rank_{rank}_stage1_score_{modal}"] = x_scores[i].mean().item()
                     wandb.log(a_dict)
-
-                    if self.iter % 500 ==0:
+                    if self.iter % 1000 ==0:
                         ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
                         vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
                         wandb.log({"stage1_PPX": wandb.Image(ppx_save_path)})
@@ -720,6 +715,11 @@ class CMNeXt(nn.Module):
                         ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
                         vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
                         wandb.log({"stage1_FFM": wandb.Image(ffm_save_path)})
+                        indice_save_path = f'./wandb_img_IND_rank{rank}.png'
+                        visualize_channel_winners(
+                            winner_indices, modal_list, indice_save_path, title=f'stage1_winner_indices_rank{rank}'
+                        )
+                        wandb.log({"stage1_winner_indices": wandb.Image(indice_save_path)})
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
@@ -759,6 +759,11 @@ class CMNeXt(nn.Module):
                         ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
                         vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
                         wandb.log({"stage2_FFM": wandb.Image(ffm_save_path)})
+                        indice_save_path = f'./wandb_img_IND_rank{rank}.png'
+                        visualize_channel_winners(
+                            winner_indices, modal_list, indice_save_path, title=f'stage2_winner_indices_rank{rank}'
+                        )
+                        wandb.log({"stage2_winner_indices": wandb.Image(indice_save_path)})
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
@@ -796,6 +801,11 @@ class CMNeXt(nn.Module):
                         ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
                         vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
                         wandb.log({"stage3_FFM": wandb.Image(ffm_save_path)})
+                        indice_save_path = f'./wandb_img_IND_rank{rank}.png'
+                        visualize_channel_winners(
+                            winner_indices, modal_list, indice_save_path, title=f'stage3_winner_indices_rank{rank}'
+                        )
+                        wandb.log({"stage3_winner_indices": wandb.Image(indice_save_path)})
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
         else:
@@ -833,6 +843,11 @@ class CMNeXt(nn.Module):
                         ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
                         vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
                         wandb.log({"stage4_FFM": wandb.Image(ffm_save_path)})
+                        indice_save_path = f'./wandb_img_IND_rank{rank}.png'
+                        visualize_channel_winners(
+                            winner_indices, modal_list, indice_save_path, title=f'stage4_winner_indices_rank{rank}'
+                        )
+                        wandb.log({"stage4_winner_indices": wandb.Image(indice_save_path)})
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
@@ -924,4 +939,71 @@ def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_te
     print(f"Saved tensor visualization grid to {save_path}")
     
 
+# mcdet/models/backbones/cmnext.py 파일 하단에 추가
+
+def visualize_channel_winners(
+    winner_indices: torch.Tensor,
+    modality_names: List[str],
+    save_path: str = 'feature_map.png',
+    title: str = 'Modality Winner Map per Channel',
+    batch_idx: int = 0
+):
+    """
+    (B, C, H, W) 형태의 다중 채널 '승자 인덱스' 맵을 입력받아,
+    각 채널을 R,G,B로 색칠된 이미지로 변환하고 그리드 형태로 시각화합니다.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # 4D 텐서(B, C, H, W)일 경우, 지정된 배치만 선택
+    if winner_indices.dim() == 4:
+        winner_indices = winner_indices[batch_idx]
     
+    indices_np = winner_indices.detach().cpu().numpy()
+    C, H, W = indices_np.shape
+
+    # 그리드 크기 계산 (예: 64채널 -> 8x8)
+    ncols = int(np.ceil(np.sqrt(C)))
+    nrows = int(np.ceil(C / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
+    axes = axes.flatten()
+    
+    # 전체 제목 추가 (범례 역할 포함)
+    legend_str = "Colors  :  "
+    for i, name in enumerate(modality_names):
+        if i < 3:
+            legend_str += f"{['R', 'G', 'B'][i]}:{name}  "
+    fig.suptitle(f'{title}\n({legend_str.strip()})', fontsize=16)
+
+    # ✅ [핵심] 컬러 팔레트를 미리 정의
+    color_palette = np.array([
+        [255, 0, 0],   # 인덱스 0 (Red)
+        [0, 255, 0],   # 인덱스 1 (Green)
+        [0, 0, 255],   # 인덱스 2 (Blue)
+        [255, 255, 0]  # 인덱스 3 (Yellow)
+    ], dtype=np.uint8)
+    
+    for i in range(C):
+        # i번째 채널의 인덱스 맵을 가져옴. Shape: (H, W)
+        index_map = indices_np[i]
+        
+        # ✅ [핵심] (H, W) 인덱스 맵을 (H, W, 3) RGB 이미지로 변환
+        rgb_image = color_palette[index_map]
+        
+        ax = axes[i]
+        # ✅ [핵심] cmap이 아닌, 변환된 RGB 이미지를 직접 그림
+        ax.imshow(rgb_image)
+        ax.axis('off')
+        ax.set_title(f"Ch: {i}", fontsize=10)
+    
+    # 사용하지 않는 나머지 subplot 숨기기
+    for j in range(C, len(axes)):
+        axes[j].axis('off')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.92]) # suptitle과 겹치지 않도록 조정
+    plt.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved channel winner visualization to {save_path}")
+
+
