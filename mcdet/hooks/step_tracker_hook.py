@@ -1,6 +1,9 @@
+# mcdet/hooks/step_tracker_hook.py
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
+from mmengine.registry import HOOKS
 
+@HOOKS.register_module()
 class StepTrackerHook(Hook):
     """
     매 반복(iteration)마다 Runner의 iter 값을 모델의 속성으로 주입하는 훅.

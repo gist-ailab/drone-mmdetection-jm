@@ -2,7 +2,9 @@
 
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
+from mmdet.registry import HOOKS
 
+@HOOKS.register_module()
 class VisLogHook(Hook):
     """
     Validation/Test Epoch이 시작될 때마다 모델의 로깅 플래그를 리셋하는 훅.
