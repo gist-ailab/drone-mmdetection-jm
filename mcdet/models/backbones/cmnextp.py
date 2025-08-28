@@ -685,8 +685,8 @@ class CMNeXtP(nn.Module):
 
         return x_f, x_scores, attention_weights
     
+
     def forward(self, x: list) -> list:
-        modal_list = ["depth", "ir", "lidar"]
         x_cam = x[0]        
         if self.num_modals > 0:
             x_ext = x[1:]
@@ -694,23 +694,27 @@ class CMNeXtP(nn.Module):
         outs = []
         
         # ------------------------- STAGE 1 -------------------------
-        x_cam_p, H, W = self.patch_embed1(x_cam)
+        # ✅ [버그 수정] x_cam_p -> x_cam으로 변수명 수정
+        x_cam, H, W = self.patch_embed1(x_cam)
         for blk in self.block1:
-            x_cam = blk(x_cam_p, H, W)
+            # ✅ [버그 수정] x_cam_p -> x_cam으로 수정하여 루프가 정상 동작하도록 함
+            x_cam = blk(x_cam, H, W)
         x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        
         if self.num_modals > 0:
             x_ext_down, _, _ = self.extra_downsample_layers[0](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None, None)
+            # ✅ [버그 수정] 반환값에 맞게 변수명을 attention_weights로 수정
+            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext_down[0], None, None)
             for blk in self.extra_block1:
                 x_f = blk(x_f)
             x1_f_ = self.extra_norm1(x_f)
-            x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f_)
-            x_fused = self.FFMs[0](x1_cam, x1_f)
+            x1_cam_rect, x1_f = self.FRMs[0](x1_cam, x1_f_)
+            x_fused = self.FFMs[0](x1_cam_rect, x1_f)
             
             if x_scores is not None: 
                 is_dist = dist.is_available() and dist.is_initialized()
                 if not is_dist or dist.get_rank() == 0:
-                    if self.training: # --- 학습 중 ---
+                    if self.training:
                         if wandb:
                             a_dict = {}
                             for i, modal in enumerate(self.modals):
@@ -719,40 +723,43 @@ class CMNeXtP(nn.Module):
                             wandb.log(a_dict)
                     else:
                        if wandb and not self._has_logged_this_epoch:
-                            # 폴더 생성 로직 추가
                             import os
                             os.makedirs("./wandb_val_img", exist_ok=True)
                             vis_tensor_single_batch_grid(x1_f_, batch=0, save_path="./wandb_val_img/stage1_PPx.png")
                             wandb.log({"val/stage1_PPX": wandb.Image("./wandb_val_img/stage1_PPx.png")})
-                            vis_tensor_single_batch_grid(x1_cam, batch=0, save_path="./wandb_val_img/stage1_FRM.png")
-                            wandb.log({"val/stage1_FRM": wandb.Image("./wandb_val_img/stage1_FRM.png")})
+                            vis_tensor_single_batch_grid(x1_cam, batch=0, save_path="./wandb_val_img/stage1_FRM_input.png")
+                            wandb.log({"val/stage1_FRM_input": wandb.Image("./wandb_val_img/stage1_FRM_input.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage1_FFM.png")
                             wandb.log({"val/stage1_FFM": wandb.Image("./wandb_val_img/stage1_FFM.png")})
-                           log_soft_mix_stats(
-                                attention_map=attention_weights,
-                                modality_names=self.modals,
-                                log_prefix="val/stage1"
-                            )
-                                   
+                            
+                            # ✅ [버그 수정] 들여쓰기 수정 및 올바른 변수 사용
+                            if attention_weights is not None:
+                                log_soft_mix_stats(
+                                    attention_map=attention_weights,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage1"
+                                )
 
             outs.append(x_fused)
-            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
+            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x in x_ext] if self.num_modals > 1 else [x1_f]
+            x_cam = x_fused
         else:
             outs.append(x1_cam)
+            x_cam = x1_cam
 
-        # stage 2
-        x_cam, H, W = self.patch_embed2(x1_cam)
+        # ------------------------- STAGE 2 -------------------------
+        x_cam, H, W = self.patch_embed2(x_cam)
         for blk in self.block2:
             x_cam = blk(x_cam, H, W)
         x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
-            x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
+            x_ext_down, _, _ = self.extra_downsample_layers[1](x_ext)
+            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[1]) if self.num_modals > 1 else (x_ext_down[0], None, None)
             for blk in self.extra_block2:
                 x_f = blk(x_f)
             x2_f_ = self.extra_norm2(x_f)
-            x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
-            x_fused = self.FFMs[1](x2_cam, x2_f)
+            x2_cam_rect, x2_f = self.FRMs[1](x2_cam, x2_f_)
+            x_fused = self.FFMs[1](x2_cam_rect, x2_f)
             
             if x_scores is not None:
                 is_dist = dist.is_available() and dist.is_initialized()
@@ -766,37 +773,42 @@ class CMNeXtP(nn.Module):
                             wandb.log(a_dict)
                     else:
                         if wandb and not self._has_logged_this_epoch:
+                            # ✅ [버그 수정] Stage 2에 맞는 변수(x2_f_, x2_cam) 사용
                             vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage2_PPx.png")
                             wandb.log({"val/stage2_PPX": wandb.Image("./wandb_val_img/stage2_PPx.png")})
-                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage2_FRM.png")
-                            wandb.log({"val/stage2_FRM": wandb.Image("./wandb_val_img/stage2_FRM.png")})
+                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage2_FRM_input.png")
+                            wandb.log({"val/stage2_FRM_input": wandb.Image("./wandb_val_img/stage2_FRM_input.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage2_FFM.png")
                             wandb.log({"val/stage2_FFM": wandb.Image("./wandb_val_img/stage2_FFM.png")})
-                            log_soft_mix_stats(
-                                attention_map=attention_weights,
-                                modality_names=self.modals,
-                                log_prefix="val/stage2"
-                            )
+                            
+                            if attention_weights is not None:
+                                log_soft_mix_stats(
+                                    attention_map=attention_weights,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage2"
+                                )
                                    
             outs.append(x_fused)
-            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
+            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x in x_ext] if self.num_modals > 1 else [x2_f]
+            x_cam = x_fused
         else:
             outs.append(x2_cam)
+            x_cam = x2_cam
 
-        # stage 3
-        x_cam, H, W = self.patch_embed3(x2_cam)
+        # ------------------------- STAGE 3 -------------------------
+        x_cam, H, W = self.patch_embed3(x_cam)
         for blk in self.block3:
             x_cam = blk(x_cam, H, W)
         x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
-            x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else x_ext[0] 
+            x_ext_down, _, _ = self.extra_downsample_layers[2](x_ext)
+            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[2]) if self.num_modals > 1 else (x_ext_down[0], None, None)
             for blk in self.extra_block3:
                 x_f = blk(x_f)
-            
             x3_f_ = self.extra_norm3(x_f)
-            x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
-            x_fused = self.FFMs[2](x3_cam, x3_f)
+            x3_cam_rect, x3_f = self.FRMs[2](x3_cam, x3_f_)
+            x_fused = self.FFMs[2](x3_cam_rect, x3_f)
+
             if x_scores is not None:
                 is_dist = dist.is_available() and dist.is_initialized()
                 if not is_dist or dist.get_rank() == 0:
@@ -807,41 +819,44 @@ class CMNeXtP(nn.Module):
                                 if i < len(x_scores):
                                     a_dict[f"stage3_score_{modal}"] = x_scores[i].mean().item()
                             wandb.log(a_dict)
-
                     else:
                         if wandb and not self._has_logged_this_epoch:
-                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage3_PPx.png")
+                             # ✅ [버그 수정] Stage 3에 맞는 변수(x3_f_, x3_cam) 사용
+                            vis_tensor_single_batch_grid(x3_f_, batch=0, save_path="./wandb_val_img/stage3_PPx.png")
                             wandb.log({"val/stage3_PPX": wandb.Image("./wandb_val_img/stage3_PPx.png")})
-                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage3_FRM.png")
-                            wandb.log({"val/stage3_FRM": wandb.Image("./wandb_val_img/stage3_FRM.png")})
+                            vis_tensor_single_batch_grid(x3_cam, batch=0, save_path="./wandb_val_img/stage3_FRM_input.png")
+                            wandb.log({"val/stage3_FRM_input": wandb.Image("./wandb_val_img/stage3_FRM_input.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage3_FFM.png")
                             wandb.log({"val/stage3_FFM": wandb.Image("./wandb_val_img/stage3_FFM.png")})
-                           log_soft_mix_stats(
-                                attention_map=attention_weights,
-                                modality_names=self.modals,
-                                log_prefix="val/stage3"
-                            )
-                                   
+                            
+                            if attention_weights is not None:
+                                log_soft_mix_stats(
+                                    attention_map=attention_weights,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage3"
+                                )
                                  
             outs.append(x_fused)
-            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
+            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x in x_ext] if self.num_modals > 1 else [x3_f]
+            x_cam = x_fused
         else:
             outs.append(x3_cam)
+            x_cam = x3_cam
 
-        # stage 4
-        x_cam, H, W = self.patch_embed4(x3_cam)
+        # ------------------------- STAGE 4 -------------------------
+        x_cam, H, W = self.patch_embed4(x_cam)
         for blk in self.block4:
             x_cam = blk(x_cam, H, W)
         x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
-            x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
+            x_ext_down, _, _ = self.extra_downsample_layers[3](x_ext)
+            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[3]) if self.num_modals > 1 else (x_ext_down[0], None, None)
             for blk in self.extra_block4:
                 x_f = blk(x_f)
-            
             x4_f_ = self.extra_norm4(x_f)
-            x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
-            x_fused = self.FFMs[3](x4_cam, x4_f)
+            x4_cam_rect, x4_f = self.FRMs[3](x4_cam, x4_f_)
+            x_fused = self.FFMs[3](x4_cam_rect, x4_f)
+
             if x_scores is not None:
                 is_dist = dist.is_available() and dist.is_initialized()
                 if not is_dist or dist.get_rank() == 0:
@@ -854,22 +869,31 @@ class CMNeXtP(nn.Module):
                             wandb.log(a_dict)
                     else:
                         if wandb and not self._has_logged_this_epoch:
-                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage4_PPx.png")
+                            # ✅ [버그 수정] Stage 4에 맞는 변수(x4_f_, x4_cam) 사용
+                            vis_tensor_single_batch_grid(x4_f_, batch=0, save_path="./wandb_val_img/stage4_PPx.png")
                             wandb.log({"val/stage4_PPX": wandb.Image("./wandb_val_img/stage4_PPx.png")})
-                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage4_FRM.png")
-                            wandb.log({"val/stage4_FRM": wandb.Image("./wandb_val_img/stage4_FRM.png")})
+                            vis_tensor_single_batch_grid(x4_cam, batch=0, save_path="./wandb_val_img/stage4_FRM_input.png")
+                            wandb.log({"val/stage4_FRM_input": wandb.Image("./wandb_val_img/stage4_FRM_input.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage4_FFM.png")
                             wandb.log({"val/stage4_FFM": wandb.Image("./wandb_val_img/stage4_FFM.png")})
-                           log_soft_mix_stats(
-                                attention_map=attention_weights,
-                                modality_names=self.modals,
-                                log_prefix="val/stage4"
-                            )
-                                   
+                            
+                            if attention_weights is not None:
+                                log_soft_mix_stats(
+                                    attention_map=attention_weights,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage4"
+                                )
+            
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
-
+            
+        # 모든 스테이지 처리 후, 검증/테스트 로깅 플래그를 True로 설정 (중복 방지)
+        if not self.training:
+            is_dist = dist.is_available() and dist.is_initialized()
+            if not is_dist or dist.get_rank() == 0:
+                self._has_logged_this_epoch = True
+                
         return outs
 
 def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.png'):
@@ -960,11 +984,11 @@ def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_te
     
 
 def log_soft_mix_stats(
-    attention_map: Tensor,
-    modality_names: List[str],
-    log_prefix: str,
-    batch_idx: int = 0
-):
+        attention_map: Tensor,
+        modality_names: List[str],
+        log_prefix: str,
+        batch_idx: int = 0
+        ):
     """
     Soft Mix의 기여도 통계를 계산하고 시각화하여 wandb에 로깅합니다.
     """

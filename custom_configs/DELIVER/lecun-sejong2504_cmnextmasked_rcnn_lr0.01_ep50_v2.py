@@ -218,13 +218,12 @@ param_scheduler = [
         end=500),
     dict(
         type='CosineAnnealingLR',
-        T_max=50, # 🔥 전체 epoch 수와 일치
+        T_max=50,
         by_epoch=True,
-        begin=0, # 🔥 Warmup 직후부터 시작
+        begin=1,  # 0 → 1로 변경 (warmup 이후 시작)
         end=50,
         eta_min=1e-6)
 ]
-
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
@@ -301,3 +300,5 @@ visualizer = dict(
 # Experiment name
 experiment_name = 'sejong2504_cmnextmasked_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
+
+find_unused_parameters = True

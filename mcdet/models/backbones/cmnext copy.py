@@ -22,12 +22,13 @@ import matplotlib
 matplotlib.use('Agg')  # 비-인터랙티브 백엔드 설정
 import torch.distributed as dist
 
+
 try:
     import wandb
 except ImportError:
     wandb = None
-
-
+    
+    
 
 def load_dualpath_model(model, model_file):
     """Load pretrained model for multimodal CMNext."""
@@ -498,7 +499,6 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
         return x
 
-
 class ChannelProcessing(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., drop_path=0., mlp_hidden_dim=None, norm_layer=nn.LayerNorm):
         super().__init__()
@@ -600,6 +600,8 @@ class CMNeXt(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
         self.iter = 0
+        self._has_logged_this_epoch = False
+
         assert model_name in cmnext_settings.keys(), f"Model name should be in {list(cmnext_settings.keys())}"
         embed_dims, depths = cmnext_settings[model_name]
         extra_depths = depths 
@@ -666,17 +668,27 @@ class CMNeXt(nn.Module):
                 FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
                 FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
 
-    def tokenselect(self, x_ext, module):    
-        x_scores = module(x_ext)                            #score 에서 token을 선택
-        # stacked_scores = torch.stack(x_scores, dim=0)  # (num_modals, B, 1, H, W)
-        # winner_indices = torch.argmax(stacked_scores, dim=0)  # (B, 1, H, W)
-        stacked_scores = torch.cat(x_scores, dim=1)  # (B, num_modals, H, W)
-        winner_indices = torch.argmax(stacked_scores, dim=1, keepdim=True)  # (B, 1, H, W)
-    
+    def tokenselect(self, x_ext: List[Tensor], module: nn.Module) -> Tuple[Tensor, List[Tensor], Tensor]:
+        """
+        기존의 hard mix 방식(torch.max)을 유지하면서,
+        어떤 모달리티의 스코어가 각 픽셀에서 가장 높았는지 알려주는
+        winner_indices 맵을 추가로 반환합니다.
+        """
+        # 1. 각 모달리티의 스코어 맵 계산 (기존과 동일)
+        x_scores = module(x_ext)
+
+        # ✅ [수정] 어떤 모달리티 스코어가 가장 높은지 인덱스를 찾습니다.
+        # 스코어들을 하나의 텐서로 합칩니다. (B, num_modals, H, W)
+        
+        stacked_scores = torch.cat(x_scores, dim=1)
+        winner_indices = torch.argmax(stacked_scores.detach(), dim=1, keepdim=True)  # detach 추가
+        
         for i in range(len(x_ext)):
             x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
         x_f = functools.reduce(torch.max, x_ext)
+        
         return x_f, x_scores, winner_indices
+
      
     def forward(self, x: list) -> list:
         modal_list = ["depth", "ir", "lidar"]
@@ -685,41 +697,53 @@ class CMNeXt(nn.Module):
             x_ext = x[1:]
         B = x_cam.shape[0]
         outs = []
-        # stage 1
-        x_cam, H, W = self.patch_embed1(x_cam)
+        
+        # ------------------------- STAGE 1 -------------------------
+        x_cam_p, H, W = self.patch_embed1(x_cam)
         for blk in self.block1:
-            x_cam = blk(x_cam, H, W)
+            x_cam = blk(x_cam_p, H, W)
         x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[0](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
-            
+            # x_f, x_scores, winner_indices = self.tokenselect(x_ext_down, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None, None)
+            if self.num_modals > 1:
+                x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0])
+            else:
+                dummy_scores = self.extra_score_predictor[0](x_ext)
+                x_f, x_scores, winner_indices = x_ext[0], dummy_scores, None
             for blk in self.extra_block1:
                 x_f = blk(x_f)
             x1_f_ = self.extra_norm1(x_f)
             x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f_)
             x_fused = self.FFMs[0](x1_cam, x1_f)
             
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    import wandb
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage1_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-
-                    if self.iter % 500 ==0:
-                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
-                        wandb.log({"stage1_PPX": wandb.Image(ppx_save_path)})
-                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
-                        wandb.log({"stage1_FRM": wandb.Image(frm_save_path)})
-                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
-                        wandb.log({"stage1_FFM": wandb.Image(ffm_save_path)})
+            if x_scores is not None: 
+                is_dist = dist.is_available() and dist.is_initialized()
+                if not is_dist or dist.get_rank() == 0:
+                    if self.training: # --- 학습 중 ---
+                        if wandb:
+                            a_dict = {}
+                            for i, modal in enumerate(self.modals):
+                                if i < len(x_scores):
+                                    a_dict[f"stage1_score_{modal}"] = x_scores[i].mean().item()
+                            wandb.log(a_dict)
+                    else:
+                       if wandb and not self._has_logged_this_epoch:
+                            # 폴더 생성 로직 추가
+                            import os
+                            os.makedirs("./wandb_val_img", exist_ok=True)
+                            vis_tensor_single_batch_grid(x1_f_, batch=0, save_path="./wandb_val_img/stage1_PPx.png")
+                            wandb.log({"val/stage1_PPX": wandb.Image("./wandb_val_img/stage1_PPx.png")})
+                            vis_tensor_single_batch_grid(x1_cam, batch=0, save_path="./wandb_val_img/stage1_FRM.png")
+                            wandb.log({"val/stage1_FRM": wandb.Image("./wandb_val_img/stage1_FRM.png")})
+                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage1_FFM.png")
+                            wandb.log({"val/stage1_FFM": wandb.Image("./wandb_val_img/stage1_FFM.png")})
+                            if winner_indices is not None:
+                                log_modality_selection_stats(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage1"
+                                )
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
@@ -733,33 +757,43 @@ class CMNeXt(nn.Module):
         x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            # x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
+            if self.num_modals > 1:
+                x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[1])
+            else:
+                dummy_scores = self.extra_score_predictor[0](x_ext)
+                x_f, x_scores, winner_indices = x_ext[0], dummy_scores, None
             for blk in self.extra_block2:
                 x_f = blk(x_f)
             x2_f_ = self.extra_norm2(x_f)
             x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
             x_fused = self.FFMs[1](x2_cam, x2_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    import wandb
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage2_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-    
-                    if self.iter % 500 ==0:
-                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
-                        wandb.log({"stage2_PPX": wandb.Image(ppx_save_path)})
-                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
-                        wandb.log({"stage2_FRM": wandb.Image(frm_save_path)})
-                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
-                        wandb.log({"stage2_FFM": wandb.Image(ffm_save_path)})
-
+            
+            if x_scores is not None:
+                is_dist = dist.is_available() and dist.is_initialized()
+                if not is_dist or dist.get_rank() == 0:
+                    if self.training:
+                        if wandb:
+                            a_dict = {}
+                            for i, modal in enumerate(self.modals):
+                                if i < len(x_scores):
+                                    a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
+                            wandb.log(a_dict)
+                    else:
+                        if wandb and not self._has_logged_this_epoch:
+                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage2_PPx.png")
+                            wandb.log({"val/stage2_PPX": wandb.Image("./wandb_val_img/stage2_PPx.png")})
+                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage2_FRM.png")
+                            wandb.log({"val/stage2_FRM": wandb.Image("./wandb_val_img/stage2_FRM.png")})
+                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage2_FFM.png")
+                            wandb.log({"val/stage2_FFM": wandb.Image("./wandb_val_img/stage2_FFM.png")})
+                            if winner_indices is not None:
+                                log_modality_selection_stats(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage2"
+                                )
+                                   
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
         else:
@@ -772,30 +806,41 @@ class CMNeXt(nn.Module):
         x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            if self.num_modals > 1:
+                x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[2])
+            else:
+                dummy_scores = self.extra_score_predictor[0](x_ext)
+                x_f, x_scores, winner_indices = x_ext[0], dummy_scores, None
             for blk in self.extra_block3:
                 x_f = blk(x_f)
+            
             x3_f_ = self.extra_norm3(x_f)
             x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
             x_fused = self.FFMs[2](x3_cam, x3_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage3_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-                    if self.iter % 500 ==0:
-                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
-                        wandb.log({"stage3_PPX": wandb.Image(ppx_save_path)})
-                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
-                        wandb.log({"stage3_FRM": wandb.Image(frm_save_path)})
-                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
-                        wandb.log({"stage3_FFM": wandb.Image(ffm_save_path)})
+            if x_scores is not None:
+                is_dist = dist.is_available() and dist.is_initialized()
+                if not is_dist or dist.get_rank() == 0:
+                    if self.training:
+                        if wandb:
+                            a_dict = {}
+                            for i, modal in enumerate(self.modals):
+                                if i < len(x_scores):
+                                    a_dict[f"stage3_score_{modal}"] = x_scores[i].mean().item()
+                            wandb.log(a_dict)
+                    else:
+                        if wandb and not self._has_logged_this_epoch:
+                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage3_PPx.png")
+                            wandb.log({"val/stage3_PPX": wandb.Image("./wandb_val_img/stage3_PPx.png")})
+                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage3_FRM.png")
+                            wandb.log({"val/stage3_FRM": wandb.Image("./wandb_val_img/stage3_FRM.png")})
+                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage3_FFM.png")
+                            wandb.log({"val/stage3_FFM": wandb.Image("./wandb_val_img/stage3_FFM.png")})
+                            if winner_indices is not None:
+                                log_modality_selection_stats(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage3"
+                                )
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
         else:
@@ -808,31 +853,42 @@ class CMNeXt(nn.Module):
         x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            # x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
+            if self.num_modals > 1:
+                x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[3])
+            else:
+                dummy_scores = self.extra_score_predictor[0](x_ext)
+                x_f, x_scores, winner_indices = x_ext[0], dummy_scores, None
             for blk in self.extra_block4:
                 x_f = blk(x_f)
             
             x4_f_ = self.extra_norm4(x_f)
             x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
             x_fused = self.FFMs[3](x4_cam, x4_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage4_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-                    if self.iter % 500 ==0:
-                        ppx_save_path = f"./wandb_img_PPx_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_f_, batch=0, save_path=ppx_save_path)
-                        wandb.log({"stage4_PPX": wandb.Image(ppx_save_path)})
-                        frm_save_path = f"./wandb_img_FRM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x1_cam, batch=0, save_path=frm_save_path)
-                        wandb.log({"stage4_FRM": wandb.Image(frm_save_path)})
-                        ffm_save_path = f"./wandb_img_FFM_rank{rank}.png"
-                        vis_tensor_single_batch_grid(x_fused, batch=0, save_path=ffm_save_path)
-                        wandb.log({"stage4_FFM": wandb.Image(ffm_save_path)})
+            if x_scores is not None:
+                is_dist = dist.is_available() and dist.is_initialized()
+                if not is_dist or dist.get_rank() == 0:
+                    if self.training:
+                        if wandb:
+                            a_dict = {}
+                            for i, modal in enumerate(self.modals):
+                                if i < len(x_scores):
+                                    a_dict[f"stage4_score_{modal}"] = x_scores[i].mean().item()
+                            wandb.log(a_dict)
+                    else:
+                        if wandb and not self._has_logged_this_epoch:
+                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage4_PPx.png")
+                            wandb.log({"val/stage4_PPX": wandb.Image("./wandb_val_img/stage4_PPx.png")})
+                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage4_FRM.png")
+                            wandb.log({"val/stage4_FRM": wandb.Image("./wandb_val_img/stage4_FRM.png")})
+                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage4_FFM.png")
+                            wandb.log({"val/stage4_FFM": wandb.Image("./wandb_val_img/stage4_FFM.png")})
+                            if winner_indices is not None:
+                                log_modality_selection_stats(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    log_prefix="val/stage4"
+                                )
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
@@ -925,3 +981,46 @@ def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_te
     
 
     
+
+
+
+def log_modality_selection_stats(
+    winner_indices: Tensor,
+    modality_names: List[str],
+    log_prefix: str,
+    batch_idx: int = 0
+):
+    """
+    모달리티 선택 통계를 계산하고 시각화하여 wandb에 로깅합니다.
+    """
+    if wandb is None:
+        return
+
+    # --- 1. 텍스트 통계 로깅 ---
+    indices_map = winner_indices[batch_idx].squeeze() # (H, W)
+    total_pixels = indices_map.numel()
+    stats_dict = {}
+    for i, name in enumerate(modality_names):
+        count = torch.sum(indices_map == i).item()
+        percentage = (count / total_pixels) * 100
+        # 예: "val/stage1_selection_ratio/depth": 35.4
+        stats_dict[f"{log_prefix}_selection_ratio/{name}"] = percentage
+    
+    wandb.log(stats_dict)
+
+    # --- 2. 시각화 맵 로깅 ---
+    # 각 인덱스에 색상 지정: 0=Red(Depth), 1=Green(IR), 2=Blue(Lidar)
+    colors = torch.tensor([[255, 0, 0], [0, 255, 0], [0, 0, 255]], device=winner_indices.device)
+    
+    # 인덱스 맵을 RGB 컬러 맵으로 변환
+    # (H, W, 3) 크기의 빈 텐서를 만들고, 인덱스에 맞는 색상을 채워넣습니다.
+    h, w = indices_map.shape
+    color_map = torch.zeros((h, w, 3), dtype=torch.uint8, device=winner_indices.device)
+    for i, color in enumerate(colors):
+        color_map[indices_map == i] = color
+    
+    # wandb.Image는 numpy 배열을 입력으로 받습니다.
+    color_map_np = color_map.cpu().numpy()
+    
+    # 예: "val/stage1_selection_map"
+    wandb.log({f"{log_prefix}_selection_map": wandb.Image(color_map_np, caption=f"R: {modality_names[0]}, G: {modality_names[1]}, B: {modality_names[2]}")})
