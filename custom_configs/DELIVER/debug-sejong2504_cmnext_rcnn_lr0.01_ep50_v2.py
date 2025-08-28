@@ -290,3 +290,5 @@ log_processor = dict(
 # Experiment name
 experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
+
+find_unused_parameters = True

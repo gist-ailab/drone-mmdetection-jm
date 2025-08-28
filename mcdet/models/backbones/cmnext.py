@@ -682,6 +682,7 @@ class CMNeXt(nn.Module):
         B = x_cam.shape[0]
         outs = []
         # stage 1
+        print("[INFO] Stage1")
         x_cam, H, W = self.patch_embed1(x_cam)
         for blk in self.block1:
             x_cam = blk(x_cam, H, W)
@@ -689,7 +690,6 @@ class CMNeXt(nn.Module):
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[0](x_ext)
             x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
-            
             for blk in self.extra_block1:
                 x_f = blk(x_f)
             x1_f_ = self.extra_norm1(x_f)
@@ -725,6 +725,7 @@ class CMNeXt(nn.Module):
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
         else:
             outs.append(x1_cam)
+        print("[INFO] Stage2")
 
         # stage 2
         x_cam, H, W = self.patch_embed2(x1_cam)
@@ -733,7 +734,7 @@ class CMNeXt(nn.Module):
         x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else (x_ext[0], None)    
             for blk in self.extra_block2:
                 x_f = blk(x_f)
             x2_f_ = self.extra_norm2(x_f)
@@ -771,13 +772,14 @@ class CMNeXt(nn.Module):
             outs.append(x2_cam)
 
         # stage 3
+        print("[INFO] Stage3")
         x_cam, H, W = self.patch_embed3(x2_cam)
         for blk in self.block3:
             x_cam = blk(x_cam, H, W)
         x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else (x_ext[0], None)    
             for blk in self.extra_block3:
                 x_f = blk(x_f)
             x3_f_ = self.extra_norm3(x_f)
@@ -812,13 +814,14 @@ class CMNeXt(nn.Module):
             outs.append(x3_cam)
 
         # stage 4
+        print("[INFO] Stage4")
         x_cam, H, W = self.patch_embed4(x3_cam)
         for blk in self.block4:
             x_cam = blk(x_cam, H, W)
         x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else (x_ext[0], None)    
             for blk in self.extra_block4:
                 x_f = blk(x_f)
             
