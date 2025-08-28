@@ -1,4 +1,4 @@
-# mcdet/models/backbones/cmnext_masked.py
+# mcdet/models/backbones/cmnextp.py
 
 import torch
 import math
@@ -50,8 +50,6 @@ def load_dualpath_model(model, model_file):
     msg = model.load_state_dict(state_dict, strict=False)
     print(f"[CMNext] Pretrained model loaded: {msg}")
     del state_dict
-
-
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Cut & paste from PyTorch official master until it's in a few official releases - RW
@@ -155,7 +153,7 @@ class CMNextBaseModel(BaseModule):
 
 
 @MODELS.register_module()
-class CMNextMaskedBackbone(BaseModule):
+class CMNeXtPBackbone(BaseModule):
     """CMNext backbone for multimodal object detection.
     
     This backbone processes multimodal inputs (RGB, Depth, Event, LiDAR) 
@@ -171,7 +169,7 @@ class CMNextMaskedBackbone(BaseModule):
     """
     
     def __init__(self,
-                 backbone: str = 'CMNeXtMasked-B2',
+                 backbone: str = 'CMNeXtP-B2',
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  out_indices: Tuple[int] = (0, 1, 2, 3),
                  frozen_stages: int = -1,
@@ -595,7 +593,7 @@ cmnext_settings = {
 }
 
 
-class CMNeXtMasked(nn.Module):
+class CMNeXtP(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
         self.iter = 0
@@ -666,14 +664,27 @@ class CMNeXtMasked(nn.Module):
                 FFM(dim=embed_dims[1], reduction=1, num_heads=num_heads[1], norm_layer=nn.BatchNorm2d),
                 FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
                 FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
+            
+    def tokenselect2(self, x_ext: List[Tensor], module: nn.Module) -> Tuple[Tensor, List[Tensor], Tensor]:
+        """
+        [개선된 Soft Mix + 로깅 버전]
+        기존 soft mix 로직을 유지하면서, 각 모달리티의 기여도를 담고 있는
+        attention_weights 맵을 추가로 반환합니다.
+        """
+        # 1. 각 모달리티의 스코어 맵 계산
+        x_scores = module(x_ext)
 
-    def tokenselect(self, x_ext, module):    
-        x_scores = module(x_ext)                            #score 에서 token을 선택
-        for i in range(len(x_ext)):
-            x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
-        x_f = functools.reduce(torch.max, x_ext)
-        return x_f, x_scores
-     
+        # 2. 스코어 정규화 (Softmax 적용)
+        stacked_scores = torch.cat(x_scores, dim=1)
+        attention_weights = F.softmax(stacked_scores, dim=1) # Shape: (B, num_modals, H, W)
+
+        # 3. 피쳐 가중합 (Weighted Sum)
+        stacked_features = torch.stack(x_ext, dim=1)
+        weighted_features = stacked_features * attention_weights.unsqueeze(2)
+        x_f = torch.sum(weighted_features, dim=1)
+
+        return x_f, x_scores, attention_weights
+    
     def forward(self, x: list) -> list:
         modal_list = ["depth", "ir", "lidar"]
         x_cam = x[0]        
@@ -683,13 +694,13 @@ class CMNeXtMasked(nn.Module):
         outs = []
         
         # ------------------------- STAGE 1 -------------------------
-        x_cam, H, W = self.patch_embed1(x_cam)
+        x_cam_p, H, W = self.patch_embed1(x_cam)
         for blk in self.block1:
-            x_cam = blk(x_cam, H, W)
+            x_cam = blk(x_cam_p, H, W)
         x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
-            x_ext, _, _ = self.extra_downsample_layers[0](x_ext)
-            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            x_ext_down, _, _ = self.extra_downsample_layers[0](x_ext)
+            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None, None)
             for blk in self.extra_block1:
                 x_f = blk(x_f)
             x1_f_ = self.extra_norm1(x_f)
@@ -717,6 +728,12 @@ class CMNeXtMasked(nn.Module):
                             wandb.log({"val/stage1_FRM": wandb.Image("./wandb_val_img/stage1_FRM.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage1_FFM.png")
                             wandb.log({"val/stage1_FFM": wandb.Image("./wandb_val_img/stage1_FFM.png")})
+                           log_soft_mix_stats(
+                                attention_map=attention_weights,
+                                modality_names=self.modals,
+                                log_prefix="val/stage1"
+                            )
+                                   
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
@@ -730,7 +747,7 @@ class CMNeXtMasked(nn.Module):
         x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block2:
                 x_f = blk(x_f)
             x2_f_ = self.extra_norm2(x_f)
@@ -755,6 +772,11 @@ class CMNeXtMasked(nn.Module):
                             wandb.log({"val/stage2_FRM": wandb.Image("./wandb_val_img/stage2_FRM.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage2_FFM.png")
                             wandb.log({"val/stage2_FFM": wandb.Image("./wandb_val_img/stage2_FFM.png")})
+                            log_soft_mix_stats(
+                                attention_map=attention_weights,
+                                modality_names=self.modals,
+                                log_prefix="val/stage2"
+                            )
                                    
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
@@ -768,7 +790,7 @@ class CMNeXtMasked(nn.Module):
         x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block3:
                 x_f = blk(x_f)
             
@@ -794,6 +816,12 @@ class CMNeXtMasked(nn.Module):
                             wandb.log({"val/stage3_FRM": wandb.Image("./wandb_val_img/stage3_FRM.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage3_FFM.png")
                             wandb.log({"val/stage3_FFM": wandb.Image("./wandb_val_img/stage3_FFM.png")})
+                           log_soft_mix_stats(
+                                attention_map=attention_weights,
+                                modality_names=self.modals,
+                                log_prefix="val/stage3"
+                            )
+                                   
                                  
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
@@ -807,7 +835,7 @@ class CMNeXtMasked(nn.Module):
         x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
         if self.num_modals > 0:
             x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f, x_scores = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
+            x_f, x_scores, winner_indices = self.tokenselect2(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else x_ext[0] 
             for blk in self.extra_block4:
                 x_f = blk(x_f)
             
@@ -832,6 +860,12 @@ class CMNeXtMasked(nn.Module):
                             wandb.log({"val/stage4_FRM": wandb.Image("./wandb_val_img/stage4_FRM.png")})
                             vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage4_FFM.png")
                             wandb.log({"val/stage4_FFM": wandb.Image("./wandb_val_img/stage4_FFM.png")})
+                           log_soft_mix_stats(
+                                attention_map=attention_weights,
+                                modality_names=self.modals,
+                                log_prefix="val/stage4"
+                            )
+                                   
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
@@ -924,3 +958,52 @@ def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_te
     
 
     
+
+def log_soft_mix_stats(
+    attention_map: Tensor,
+    modality_names: List[str],
+    log_prefix: str,
+    batch_idx: int = 0
+):
+    """
+    Soft Mix의 기여도 통계를 계산하고 시각화하여 wandb에 로깅합니다.
+    """
+    if wandb is None or attention_map is None:
+        return
+
+    # --- 1. 텍스트 통계 로깅 (평균 기여도) ---
+    # attention_map shape: (B, num_modals, H, W)
+    avg_contributions = attention_map[batch_idx].mean(dim=[1, 2]) # 각 모달리티 맵의 평균값 계산
+    
+    stats_dict = {}
+    for i, name in enumerate(modality_names):
+        # 예: "val/stage1_contribution/depth": 0.354 (35.4%)
+        stats_dict[f"{log_prefix}_contribution/{name}"] = avg_contributions[i].item()
+    wandb.log(stats_dict)
+
+    # --- 2. 시각화 맵 로깅 (RGB 기여도 맵) ---
+    # 각 모달리티의 기여도를 R, G, B 채널에 매핑합니다.
+    # (주의: 보조 모달리티가 3개일 때 가장 직관적입니다)
+    num_modals = attention_map.shape[1]
+    if num_modals >= 3:
+        # (num_modals, H, W) -> (H, W, num_modals) -> (H, W, 3)
+        contribution_rgb = attention_map[batch_idx][:3].permute(1, 2, 0)
+    elif num_modals == 2:
+        # R, G 채널만 사용하고 B는 0으로 채웁니다.
+        zeros = torch.zeros_like(attention_map[batch_idx][0])
+        contribution_rgb = torch.stack([attention_map[batch_idx][0], attention_map[batch_idx][1], zeros], dim=-1)
+    else: # num_modals == 1
+        # R 채널만 사용 (흑백)
+        ch = attention_map[batch_idx][0]
+        contribution_rgb = torch.stack([ch, ch, ch], dim=-1)
+
+    # 0~1 범위를 0~255 범위의 이미지로 변환
+    color_map_np = (contribution_rgb * 255).byte().cpu().numpy()
+    
+    # wandb에 이미지 로깅
+    caption = ""
+    for i, name in enumerate(modality_names):
+        if i < 3:
+            caption += f"{['R', 'G', 'B'][i]}:{name} "
+            
+    wandb.log({f"{log_prefix}_contribution_map": wandb.Image(color_map_np, caption=caption.strip())})
