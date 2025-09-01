@@ -10,6 +10,7 @@ from mmengine.runner import Runner
 
 from mmdet.utils import setup_cache_size_limit_of_dynamo
 from mcdet import *
+from mmdet import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -67,6 +68,8 @@ def main():
 
     # load config
     cfg = Config.fromfile(args.config)
+    cfg.default_scope = 'mmdet'
+
     cfg.launcher = args.launcher
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)

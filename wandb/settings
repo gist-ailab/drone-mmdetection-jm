@@ -1,4 +1,4 @@
 [default]
-entity = maengjemo-gist   # 팀/유저 이름
-project = DELIVER  # 기본 프로젝트 이름
+entity = maengjemo-gist
+project = DELIVER
 api_key = 71734cf47230b6229bd5a8bd21c43a20d970b999
