@@ -28,7 +28,7 @@ train_pipeline = [
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
-    dict(type='Resize', scale=(4980, 640), keep_ratio=True),
+    dict(type='Resize', scale=(480, 640), keep_ratio=True),
     # If you don't have a gt annotation, delete the pipeline
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
@@ -42,6 +42,49 @@ model = dict(
         bbox_head=dict(
             num_classes=len(classes)
         )
+    ),
+    # rpn_head=dict(
+    #     anchor_generator=dict(
+    #         type='AnchorGenerator',
+    #         scales=[8],  # 스케일은 기본값을 사용하거나 데이터셋 분석 후 수정 가능
+    #         # 분석 결과로 얻은 새로운 비율을 여기에 적용합니다.
+    #         ratios=[0.331, 0.650, 1.110, 2.048, 3.667],
+    #         strides=[4, 8, 16, 32, 64])),
+    
+    train_cfg=dict(
+        rpn=dict(
+            assigner=dict(
+                type='MaxIoUAssigner',
+                pos_iou_thr=0.7,
+                neg_iou_thr=0.3,
+                min_pos_iou=0.3,
+                match_low_quality=True,
+                ignore_iof_thr=-1),
+            sampler=dict(
+                type='RandomSampler',
+                num=256,
+                pos_fraction=0.5,
+                neg_pos_ub=-1,
+                add_gt_as_proposals=False),
+            allowed_border=-1,
+            pos_weight=-1,
+            debug=False),
+        rcnn=dict(
+            assigner=dict(
+                type='MaxIoUAssigner',
+                pos_iou_thr=0.5,   # IoU가 0.5 이상이어야 Positive
+                neg_iou_thr=0.5,
+                min_pos_iou=0.5, # 모든 GT box에 대해 가장 IoU가 높은 proposal이 0.5 미만이라도 Positive로 할당
+                match_low_quality=True, # True로 바꿔서 테스트해볼 수 있음
+                ignore_iof_thr=-1),
+            sampler=dict(
+                type='RandomSampler',
+                num=512,
+                pos_fraction=0.25,
+                neg_pos_ub=-1,
+                add_gt_as_proposals=True),
+            pos_weight=-1,
+            debug=False)
     )
 )
 
@@ -56,6 +99,8 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
+        filter_cfg=dict(filter_empty_gt=True, min_size=2),
+
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
     ),
