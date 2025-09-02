@@ -13,7 +13,8 @@ custom_imports = dict(
     allow_failed_imports=False)
 
 data_root = '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
-dataset_type = 'SejongDetectionDataset'
+# dataset_type = 'SejongDetectionDataset'
+dataset_type = 'CocoDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 backend_args = None
 
@@ -90,7 +91,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=16,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -100,7 +101,6 @@ train_dataloader = dict(
         ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
         filter_cfg=dict(filter_empty_gt=True, min_size=2),
-
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
     ),
