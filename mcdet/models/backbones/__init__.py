@@ -12,6 +12,7 @@ from .stitchfusion import StitchFusionBackbone
 from .custom_resnet import ATTResNet
 from .geminifusion import GeminiFusionBackbone
 from .cmnextp import CMNeXtPBackbone
+
 # from .base_backbone import BaseBackbone
 
 

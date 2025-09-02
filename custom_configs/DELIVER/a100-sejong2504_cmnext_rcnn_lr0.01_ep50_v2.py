@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dsetdrone_250312_sejong_multimodal_coco/'
+data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -161,7 +161,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=6,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -170,6 +170,7 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
+        filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
     ),
@@ -186,6 +187,7 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
         data_prefix=dict(img='images'),
+        filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
         metainfo=dict(classes=classes)
