@@ -601,300 +601,188 @@ class CMNeXtP(nn.Module):
 
         assert model_name in cmnext_settings.keys(), f"Model name should be in {list(cmnext_settings.keys())}"
         embed_dims, depths = cmnext_settings[model_name]
-        extra_depths = depths 
-        self.modals = modals[1:] if len(modals)>1 else []  
+        
+        self.modals = modals[1:] if len(modals) > 1 else []
         self.num_modals = len(self.modals)
         drop_path_rate = 0.1
-        self.channels = embed_dims
         norm_cfg = dict(type='BN', requires_grad=True)
 
-        # patch_embed
-        self.patch_embed1 = PatchEmbed(3, embed_dims[0], 7, 4, 7//2)
-        self.patch_embed2 = PatchEmbed(embed_dims[0], embed_dims[1], 3, 2, 3//2)
-        self.patch_embed3 = PatchEmbed(embed_dims[1], embed_dims[2], 3, 2, 3//2)
-        self.patch_embed4 = PatchEmbed(embed_dims[2], embed_dims[3], 3, 2, 3//2)
-   
-        if self.num_modals > 0:
-            self.extra_downsample_layers = nn.ModuleList([
-                PatchEmbedParallel(3, embed_dims[0], 7, 4, 7//2, self.num_modals),
-                *[PatchEmbedParallel(embed_dims[i], embed_dims[i+1], 3, 2, 3//2, self.num_modals) for i in range(3)]
-            ])
-        if self.num_modals > 1:
-            self.extra_score_predictor = nn.ModuleList([PredictorConv(embed_dims[i], self.num_modals) for i in range(len(depths))])
-
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        # ✅ [최종 수정] 모든 스테이지별 모듈을 nn.ModuleList로 묶어 관리 (리팩토링)
+        self.patch_embeds = nn.ModuleList()
+        self.blocks = nn.ModuleList()
+        self.norms = nn.ModuleList()
         
+        if self.num_modals > 0:
+            self.extra_downsample_layers = nn.ModuleList()
+            self.extra_blocks = nn.ModuleList()
+            self.extra_norms = nn.ModuleList()
+            self.FRMs = nn.ModuleList()
+            self.FFMs = nn.ModuleList()
+        
+        if self.num_modals > 1:
+            self.extra_score_predictor = nn.ModuleList([
+                PredictorConv(embed_dims[i], self.num_modals) for i in range(len(depths))
+            ])
+            
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
-        self.block1 = nn.ModuleList([Block(embed_dims[0], 1, 8, dpr[cur+i]) for i in range(depths[0])])
-        self.norm1 = nn.LayerNorm(embed_dims[0])
-        if self.num_modals > 0:
-            self.extra_block1 = nn.ModuleList([MSPABlock(embed_dims[0], mlp_ratio=8, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[0])]) # --- MSPABlock
-            self.extra_norm1 = ConvLayerNorm(embed_dims[0])
+        num_heads = [1, 2, 5, 8]
+
+        for i in range(4): # 4개의 스테이지
+            self.patch_embeds.append(PatchEmbed(
+                c1=3 if i == 0 else embed_dims[i-1], c2=embed_dims[i],
+                patch_size=7 if i == 0 else 3, stride=4 if i == 0 else 2,
+                padding=7//2 if i == 0 else 3//2))
             
-        cur += depths[0]
-        self.block2 = nn.ModuleList([Block(embed_dims[1], 2, 4, dpr[cur+i]) for i in range(depths[1])])
-        self.norm2 = nn.LayerNorm(embed_dims[1])
-        if self.num_modals > 0:
-            self.extra_block2 = nn.ModuleList([MSPABlock(embed_dims[1], mlp_ratio=8, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[1])])
-            self.extra_norm2 = ConvLayerNorm(embed_dims[1])
-
-        cur += depths[1]
-        self.block3 = nn.ModuleList([Block(embed_dims[2], 5, 2, dpr[cur+i]) for i in range(depths[2])])
-        self.norm3 = nn.LayerNorm(embed_dims[2])
-        if self.num_modals > 0:
-            self.extra_block3 = nn.ModuleList([MSPABlock(embed_dims[2], mlp_ratio=4, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[2])])
-            self.extra_norm3 = ConvLayerNorm(embed_dims[2])
-
-        cur += depths[2]
-        self.block4 = nn.ModuleList([Block(embed_dims[3], 8, 1, dpr[cur+i]) for i in range(depths[3])])
-        self.norm4 = nn.LayerNorm(embed_dims[3])
-        if self.num_modals > 0:
-            self.extra_block4 = nn.ModuleList([MSPABlock(embed_dims[3], mlp_ratio=4, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[3])])
-            self.extra_norm4 = ConvLayerNorm(embed_dims[3])
-
-        if self.num_modals > 0:
-            num_heads = [1,2,5,8]
-            self.FRMs = nn.ModuleList([
-                FRM(dim=embed_dims[0], reduction=1),
-                FRM(dim=embed_dims[1], reduction=1),
-                FRM(dim=embed_dims[2], reduction=1),
-                FRM(dim=embed_dims[3], reduction=1)])
-            self.FFMs = nn.ModuleList([
-                FFM(dim=embed_dims[0], reduction=1, num_heads=num_heads[0], norm_layer=nn.BatchNorm2d),
-                FFM(dim=embed_dims[1], reduction=1, num_heads=num_heads[1], norm_layer=nn.BatchNorm2d),
-                FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
-                FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
+            self.blocks.append(nn.ModuleList([
+                Block(embed_dims[i], num_heads[i], sr_ratio=[8,4,2,1][i], dpr=dpr[cur + j]) for j in range(depths[i])]))
             
+            self.norms.append(nn.LayerNorm(embed_dims[i]))
+            cur += depths[i]
+
+            if self.num_modals > 0:
+                self.extra_downsample_layers.append(PatchEmbedParallel(
+                    c1=3 if i == 0 else embed_dims[i-1], c2=embed_dims[i],
+                    patch_size=7 if i == 0 else 3, stride=4 if i == 0 else 2,
+                    padding=7//2 if i == 0 else 3//2, num_modals=self.num_modals))
+                
+                self.extra_blocks.append(nn.ModuleList([
+                    MSPABlock(embed_dims[i], mlp_ratio=[8,8,4,4][i], drop_path=dpr[cur-depths[i]+j], norm_cfg=norm_cfg) for j in range(depths[i])]))
+                
+                self.extra_norms.append(ConvLayerNorm(embed_dims[i]))
+                self.FRMs.append(FRM(dim=embed_dims[i], reduction=1))
+                self.FFMs.append(FFM(dim=embed_dims[i], reduction=1, num_heads=num_heads[i], norm_layer=nn.BatchNorm2d))
+
     def tokenselect2(self, x_ext: List[Tensor], module: nn.Module) -> Tuple[Tensor, List[Tensor], Tensor]:
         """
         [개선된 Soft Mix + 로깅 버전]
         기존 soft mix 로직을 유지하면서, 각 모달리티의 기여도를 담고 있는
         attention_weights 맵을 추가로 반환합니다.
         """
-        # 1. 각 모달리티의 스코어 맵 계산
         x_scores = module(x_ext)
-
-        # 2. 스코어 정규화 (Softmax 적용)
         stacked_scores = torch.cat(x_scores, dim=1)
-        attention_weights = F.softmax(stacked_scores, dim=1) # Shape: (B, num_modals, H, W)
-
-        # 3. 피쳐 가중합 (Weighted Sum)
+        attention_weights = F.softmax(stacked_scores, dim=1)
+        
         stacked_features = torch.stack(x_ext, dim=1)
         weighted_features = stacked_features * attention_weights.unsqueeze(2)
         x_f = torch.sum(weighted_features, dim=1)
-
+        
         return x_f, x_scores, attention_weights
     
 
     def forward(self, x: list) -> list:
-        x_cam = x[0]        
-        if self.num_modals > 0:
-            x_ext = x[1:]
-        B = x_cam.shape[0]
+        x_cam_input = x[0]
+        x_ext_input_list = x[1:] if self.num_modals > 0 else []
+        B = x_cam_input.shape[0]
         outs = []
-        
-        # ------------------------- STAGE 1 -------------------------
-        # ✅ [버그 수정] x_cam_p -> x_cam으로 변수명 수정
-        x_cam, H, W = self.patch_embed1(x_cam)
-        for blk in self.block1:
-            # ✅ [버그 수정] x_cam_p -> x_cam으로 수정하여 루프가 정상 동작하도록 함
-            x_cam = blk(x_cam, H, W)
-        x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        
-        if self.num_modals > 0:
-            x_ext_down, _, _ = self.extra_downsample_layers[0](x_ext)
-            # ✅ [버그 수정] 반환값에 맞게 변수명을 attention_weights로 수정
-            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext_down[0], None, None)
-            for blk in self.extra_block1:
-                x_f = blk(x_f)
-            x1_f_ = self.extra_norm1(x_f)
-            x1_cam_rect, x1_f = self.FRMs[0](x1_cam, x1_f_)
-            x_fused = self.FFMs[0](x1_cam_rect, x1_f)
-            
-            if x_scores is not None: 
-                is_dist = dist.is_available() and dist.is_initialized()
-                if not is_dist or dist.get_rank() == 0:
-                    if self.training:
-                        if wandb:
-                            a_dict = {}
-                            for i, modal in enumerate(self.modals):
-                                if i < len(x_scores):
-                                    a_dict[f"stage1_score_{modal}"] = x_scores[i].mean().item()
-                            wandb.log(a_dict)
-                    else:
-                       if wandb and not self._has_logged_this_epoch:
-                            import os
-                            os.makedirs("./wandb_val_img", exist_ok=True)
-                            vis_tensor_single_batch_grid(x1_f_, batch=0, save_path="./wandb_val_img/stage1_PPx.png")
-                            wandb.log({"val/stage1_PPX": wandb.Image("./wandb_val_img/stage1_PPx.png")})
-                            vis_tensor_single_batch_grid(x1_cam, batch=0, save_path="./wandb_val_img/stage1_FRM_input.png")
-                            wandb.log({"val/stage1_FRM_input": wandb.Image("./wandb_val_img/stage1_FRM_input.png")})
-                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage1_FFM.png")
-                            wandb.log({"val/stage1_FFM": wandb.Image("./wandb_val_img/stage1_FFM.png")})
-                            
-                            # ✅ [버그 수정] 들여쓰기 수정 및 올바른 변수 사용
-                            if attention_weights is not None:
+
+        # ✅ [최종 수정] for 루프를 사용하여 버그 없는 안정적인 구조로 변경
+        for i in range(4):
+            x_cam, H, W = self.patch_embeds[i](x_cam_input)
+            for blk in self.blocks[i]:
+                x_cam = blk(x_cam, H, W)
+            x_cam_out = self.norms[i](x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+
+            if self.num_modals > 0:
+                x_ext_embedded, _, _ = self.extra_downsample_layers[i](x_ext_input_list)
+                x_f, x_scores, attention_weights = self.tokenselect(x_ext_embedded, self.extra_score_predictor[i]) if self.num_modals > 1 else (x_ext_embedded[0], None, None)
+                
+                for blk in self.extra_blocks[i]:
+                    x_f = blk(x_f)
+                x_f_processed = self.extra_norms[i](x_f)
+
+                x_cam_rect, x_f_rect = self.FRMs[i](x_cam_out, x_f_processed)
+                x_fused = self.FFMs[i](x_cam_rect, x_f_rect)
+                
+                # ✅ [최종 수정] DDP 호환 및 성능 최적화된 로깅 로직
+                if x_scores is not None:
+                    is_dist = dist.is_available() and dist.is_initialized()
+                    if not is_dist or dist.get_rank() == 0:
+                        if self.training:
+                            if wandb:
+                                a_dict = {}
+                                for j, modal in enumerate(self.modals):
+                                    if j < len(x_scores):
+                                        a_dict[f"stage{i+1}_score_{modal}"] = x_scores[j].mean().item()
+                                wandb.log(a_dict)
+                        else:
+                            if wandb and not self._has_logged_this_epoch:
                                 log_soft_mix_stats(
                                     attention_map=attention_weights,
                                     modality_names=self.modals,
-                                    log_prefix="val/stage1"
-                                )
-
-            outs.append(x_fused)
-            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x in x_ext] if self.num_modals > 1 else [x1_f]
-            x_cam = x_fused
-        else:
-            outs.append(x1_cam)
-            x_cam = x1_cam
-
-        # ------------------------- STAGE 2 -------------------------
-        x_cam, H, W = self.patch_embed2(x_cam)
-        for blk in self.block2:
-            x_cam = blk(x_cam, H, W)
-        x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        if self.num_modals > 0:
-            x_ext_down, _, _ = self.extra_downsample_layers[1](x_ext)
-            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[1]) if self.num_modals > 1 else (x_ext_down[0], None, None)
-            for blk in self.extra_block2:
-                x_f = blk(x_f)
-            x2_f_ = self.extra_norm2(x_f)
-            x2_cam_rect, x2_f = self.FRMs[1](x2_cam, x2_f_)
-            x_fused = self.FFMs[1](x2_cam_rect, x2_f)
+                                    log_prefix=f"val/stage{i+1}")
+                
+                outs.append(x_fused)
+                x_cam_input = x_fused
+                x_ext_input_list = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x_f_rect for x in x_ext_embedded] if self.num_modals > 1 else [x_f_rect]
             
-            if x_scores is not None:
-                is_dist = dist.is_available() and dist.is_initialized()
-                if not is_dist or dist.get_rank() == 0:
-                    if self.training:
-                        if wandb:
-                            a_dict = {}
-                            for i, modal in enumerate(self.modals):
-                                if i < len(x_scores):
-                                    a_dict[f"stage2_score_{modal}"] = x_scores[i].mean().item()
-                            wandb.log(a_dict)
-                    else:
-                        if wandb and not self._has_logged_this_epoch:
-                            # ✅ [버그 수정] Stage 2에 맞는 변수(x2_f_, x2_cam) 사용
-                            vis_tensor_single_batch_grid(x2_f_, batch=0, save_path="./wandb_val_img/stage2_PPx.png")
-                            wandb.log({"val/stage2_PPX": wandb.Image("./wandb_val_img/stage2_PPx.png")})
-                            vis_tensor_single_batch_grid(x2_cam, batch=0, save_path="./wandb_val_img/stage2_FRM_input.png")
-                            wandb.log({"val/stage2_FRM_input": wandb.Image("./wandb_val_img/stage2_FRM_input.png")})
-                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage2_FFM.png")
-                            wandb.log({"val/stage2_FFM": wandb.Image("./wandb_val_img/stage2_FFM.png")})
-                            
-                            if attention_weights is not None:
-                                log_soft_mix_stats(
-                                    attention_map=attention_weights,
-                                    modality_names=self.modals,
-                                    log_prefix="val/stage2"
-                                )
-                                   
-            outs.append(x_fused)
-            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x in x_ext] if self.num_modals > 1 else [x2_f]
-            x_cam = x_fused
-        else:
-            outs.append(x2_cam)
-            x_cam = x2_cam
+            else:
+                outs.append(x_cam_out)
+                x_cam_input = x_cam_out
 
-        # ------------------------- STAGE 3 -------------------------
-        x_cam, H, W = self.patch_embed3(x_cam)
-        for blk in self.block3:
-            x_cam = blk(x_cam, H, W)
-        x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        if self.num_modals > 0:
-            x_ext_down, _, _ = self.extra_downsample_layers[2](x_ext)
-            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[2]) if self.num_modals > 1 else (x_ext_down[0], None, None)
-            for blk in self.extra_block3:
-                x_f = blk(x_f)
-            x3_f_ = self.extra_norm3(x_f)
-            x3_cam_rect, x3_f = self.FRMs[2](x3_cam, x3_f_)
-            x_fused = self.FFMs[2](x3_cam_rect, x3_f)
-
-            if x_scores is not None:
-                is_dist = dist.is_available() and dist.is_initialized()
-                if not is_dist or dist.get_rank() == 0:
-                    if self.training:
-                        if wandb:
-                            a_dict = {}
-                            for i, modal in enumerate(self.modals):
-                                if i < len(x_scores):
-                                    a_dict[f"stage3_score_{modal}"] = x_scores[i].mean().item()
-                            wandb.log(a_dict)
-                    else:
-                        if wandb and not self._has_logged_this_epoch:
-                             # ✅ [버그 수정] Stage 3에 맞는 변수(x3_f_, x3_cam) 사용
-                            vis_tensor_single_batch_grid(x3_f_, batch=0, save_path="./wandb_val_img/stage3_PPx.png")
-                            wandb.log({"val/stage3_PPX": wandb.Image("./wandb_val_img/stage3_PPx.png")})
-                            vis_tensor_single_batch_grid(x3_cam, batch=0, save_path="./wandb_val_img/stage3_FRM_input.png")
-                            wandb.log({"val/stage3_FRM_input": wandb.Image("./wandb_val_img/stage3_FRM_input.png")})
-                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage3_FFM.png")
-                            wandb.log({"val/stage3_FFM": wandb.Image("./wandb_val_img/stage3_FFM.png")})
-                            
-                            if attention_weights is not None:
-                                log_soft_mix_stats(
-                                    attention_map=attention_weights,
-                                    modality_names=self.modals,
-                                    log_prefix="val/stage3"
-                                )
-                                 
-            outs.append(x_fused)
-            x_ext = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x in x_ext] if self.num_modals > 1 else [x3_f]
-            x_cam = x_fused
-        else:
-            outs.append(x3_cam)
-            x_cam = x3_cam
-
-        # ------------------------- STAGE 4 -------------------------
-        x_cam, H, W = self.patch_embed4(x_cam)
-        for blk in self.block4:
-            x_cam = blk(x_cam, H, W)
-        x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        if self.num_modals > 0:
-            x_ext_down, _, _ = self.extra_downsample_layers[3](x_ext)
-            x_f, x_scores, attention_weights = self.tokenselect2(x_ext_down, self.extra_score_predictor[3]) if self.num_modals > 1 else (x_ext_down[0], None, None)
-            for blk in self.extra_block4:
-                x_f = blk(x_f)
-            x4_f_ = self.extra_norm4(x_f)
-            x4_cam_rect, x4_f = self.FRMs[3](x4_cam, x4_f_)
-            x_fused = self.FFMs[3](x4_cam_rect, x4_f)
-
-            if x_scores is not None:
-                is_dist = dist.is_available() and dist.is_initialized()
-                if not is_dist or dist.get_rank() == 0:
-                    if self.training:
-                        if wandb:
-                            a_dict = {}
-                            for i, modal in enumerate(self.modals):
-                                if i < len(x_scores):
-                                    a_dict[f"stage4_score_{modal}"] = x_scores[i].mean().item()
-                            wandb.log(a_dict)
-                    else:
-                        if wandb and not self._has_logged_this_epoch:
-                            # ✅ [버그 수정] Stage 4에 맞는 변수(x4_f_, x4_cam) 사용
-                            vis_tensor_single_batch_grid(x4_f_, batch=0, save_path="./wandb_val_img/stage4_PPx.png")
-                            wandb.log({"val/stage4_PPX": wandb.Image("./wandb_val_img/stage4_PPx.png")})
-                            vis_tensor_single_batch_grid(x4_cam, batch=0, save_path="./wandb_val_img/stage4_FRM_input.png")
-                            wandb.log({"val/stage4_FRM_input": wandb.Image("./wandb_val_img/stage4_FRM_input.png")})
-                            vis_tensor_single_batch_grid(x_fused, batch=0, save_path="./wandb_val_img/stage4_FFM.png")
-                            wandb.log({"val/stage4_FFM": wandb.Image("./wandb_val_img/stage4_FFM.png")})
-                            
-                            if attention_weights is not None:
-                                log_soft_mix_stats(
-                                    attention_map=attention_weights,
-                                    modality_names=self.modals,
-                                    log_prefix="val/stage4"
-                                )
-            
-            outs.append(x_fused)
-        else:
-            outs.append(x4_cam)
-            
-        # 모든 스테이지 처리 후, 검증/테스트 로깅 플래그를 True로 설정 (중복 방지)
         if not self.training:
             is_dist = dist.is_available() and dist.is_initialized()
             if not is_dist or dist.get_rank() == 0:
-                self._has_logged_this_epoch = True
-                
+                if wandb and not self._has_logged_this_epoch:
+                    self._has_logged_this_epoch = True
+
         return outs
+    
+def create_soft_mix_contribution_map(
+    attention_map: Tensor,
+    batch_idx: int = 0
+) -> np.ndarray:
+    """
+    Soft-Mix의 결과인 attention_map을 입력받아, 각 모달리티의 기여도를
+    RGB 채널에 매핑한 NumPy 이미지 배열을 생성합니다.
+
+    Args:
+        attention_map (Tensor): (B, num_modals, H, W) 크기의 attention weight 텐서.
+        batch_idx (int): 시각화할 배치의 인덱스.
+
+    Returns:
+        np.ndarray: (H, W, 3) 형태의 uint8 RGB 이미지 배열.
+    """
+    import numpy as np
+    import torch
+
+    # 배치에서 하나를 선택하고 CPU로 이동
+    attention_map_single = attention_map[batch_idx].cpu()
+    num_modals, h, w = attention_map_single.shape
+
+    # (H, W, 3) 크기의 빈 RGB 캔버스 생성
+    contribution_rgb = torch.zeros((h, w, 3), dtype=torch.float32)
+
+    # 각 모달리티의 기여도를 RGB 채널에 순서대로 매핑
+    if num_modals >= 1:
+        contribution_rgb[:, :, 0] = attention_map_single[0]  # 첫 번째 모달리티 -> Red 채널
+    if num_modals >= 2:
+        contribution_rgb[:, :, 1] = attention_map_single[1]  # 두 번째 모달리티 -> Green 채널
+    if num_modals >= 3:
+        contribution_rgb[:, :, 2] = attention_map_single[2]  # 세 번째 모달리티 -> Blue 채널
+    # (보조 모달리티가 3개 초과 시, 추가 모달리티는 시각화에서 제외됨)
+
+    # 0~1 범위의 float 값을 0~255 범위의 uint8 값으로 변환
+    image_array = (contribution_rgb.numpy() * 255).astype(np.uint8)
+
+    return image_array
+
+def log_soft_mix_stats(attention_map: Tensor, modality_names: List[str], log_prefix: str, batch_idx: int = 0):
+    if wandb is None or attention_map is None:
+        return
+    # 텍스트 통계 로깅
+    avg_contributions = attention_map[batch_idx].mean(dim=[1, 2])
+    stats_dict = {}
+    for i, name in enumerate(modality_names):
+        stats_dict[f"{log_prefix}_contribution/{name}"] = avg_contributions[i].item()
+    wandb.log(stats_dict)
+    
+    # 시각화 맵 이미지 생성 및 로깅
+    image_array = create_soft_mix_contribution_map(attention_map, modality_names, "Contribution Map", batch_idx)
+    wandb.log({f"{log_prefix}_contribution_map": wandb.Image(image_array)})
+    
+    
+    
 
 def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.png'):
     """
