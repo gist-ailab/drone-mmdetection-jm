@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped'
+data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -229,11 +229,6 @@ optim_wrapper = dict(
 )
 
 
-# # Hooks, Logger, Visualizer (기존 설정 유지)
-# default_hooks = _base_.default_hooks
-# log_processor = _base_.log_processor
-# vis_backends = _base_.vis_backends
-# visualizer = _base_.visualizer
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -295,7 +290,7 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
+experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 

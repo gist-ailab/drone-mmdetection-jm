@@ -685,7 +685,7 @@ class CMNeXtP(nn.Module):
 
             if self.num_modals > 0:
                 x_ext_embedded, _, _ = self.extra_downsample_layers[i](x_ext_input_list)
-                x_f, x_scores, attention_weights = self.tokenselect(x_ext_embedded, self.extra_score_predictor[i]) if self.num_modals > 1 else (x_ext_embedded[0], None, None)
+                x_f, x_scores, attention_weights = self.tokenselect2(x_ext_embedded, self.extra_score_predictor[i]) if self.num_modals > 1 else (x_ext_embedded[0], None, None)
                 
                 for blk in self.extra_blocks[i]:
                     x_f = blk(x_f)

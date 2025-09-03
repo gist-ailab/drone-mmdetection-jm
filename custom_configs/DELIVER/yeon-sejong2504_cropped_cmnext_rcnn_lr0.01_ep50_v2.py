@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco/'
+data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -56,7 +56,8 @@ model = dict(
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        pretrained='/home/jovyan/SSDc/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        # pretrained='/home/jovyan/SSDc/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
         # pretrained='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
