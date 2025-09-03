@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped'
+data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -168,8 +168,8 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/train_cropped3.json',
-        data_prefix=dict(img='images_cropped3'),
+        ann_file=f'{data_root}labels/train.json',
+        data_prefix=dict(img='images'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -185,8 +185,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/test_cropped3.json',
-        data_prefix=dict(img='images_cropped3'),
+        ann_file=f'{data_root}labels/test.json',
+        data_prefix=dict(img='images'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -197,7 +197,7 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'labels/test_cropped3.json'),
+    ann_file=os.path.join(data_root, 'labels/test.json'),
     metric='bbox')
 
 # Training schedule
@@ -295,7 +295,7 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
+experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 
