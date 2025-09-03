@@ -1,4 +1,4 @@
-# mcdet/models/backbones/cmnextp.py
+# mcdet/models/backbones/cmnext.py
 
 import torch
 import math
@@ -26,7 +26,8 @@ try:
     import wandb
 except ImportError:
     wandb = None
-    
+
+
 
 def load_dualpath_model(model, model_file):
     """Load pretrained model for multimodal CMNext."""
@@ -50,6 +51,8 @@ def load_dualpath_model(model, model_file):
     msg = model.load_state_dict(state_dict, strict=False)
     print(f"[CMNext] Pretrained model loaded: {msg}")
     del state_dict
+
+
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Cut & paste from PyTorch official master until it's in a few official releases - RW
@@ -153,7 +156,7 @@ class CMNextBaseModel(BaseModule):
 
 
 @MODELS.register_module()
-class CMNeXtPBackbone(BaseModule):
+class CMNextBackbone(BaseModule):
     """CMNext backbone for multimodal object detection.
     
     This backbone processes multimodal inputs (RGB, Depth, Event, LiDAR) 
@@ -169,7 +172,7 @@ class CMNeXtPBackbone(BaseModule):
     """
     
     def __init__(self,
-                 backbone: str = 'CMNeXtP-B2',
+                 backbone: str = 'CMNeXt-B2',
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  out_indices: Tuple[int] = (0, 1, 2, 3),
                  frozen_stages: int = -1,
@@ -593,196 +596,298 @@ cmnext_settings = {
 }
 
 
-class CMNeXtP(nn.Module):
+class CMNeXt(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
         self.iter = 0
-        self._has_logged_this_epoch = False
-
         assert model_name in cmnext_settings.keys(), f"Model name should be in {list(cmnext_settings.keys())}"
         embed_dims, depths = cmnext_settings[model_name]
-        
-        self.modals = modals[1:] if len(modals) > 1 else []
+        extra_depths = depths 
+        self.modals = modals[1:] if len(modals)>1 else []  
         self.num_modals = len(self.modals)
         drop_path_rate = 0.1
+        self.channels = embed_dims
         norm_cfg = dict(type='BN', requires_grad=True)
 
-        # ✅ [최종 수정] 모든 스테이지별 모듈을 nn.ModuleList로 묶어 관리 (리팩토링)
-        self.patch_embeds = nn.ModuleList()
-        self.blocks = nn.ModuleList()
-        self.norms = nn.ModuleList()
-        
+        # patch_embed
+        self.patch_embed1 = PatchEmbed(3, embed_dims[0], 7, 4, 7//2)
+        self.patch_embed2 = PatchEmbed(embed_dims[0], embed_dims[1], 3, 2, 3//2)
+        self.patch_embed3 = PatchEmbed(embed_dims[1], embed_dims[2], 3, 2, 3//2)
+        self.patch_embed4 = PatchEmbed(embed_dims[2], embed_dims[3], 3, 2, 3//2)
+   
         if self.num_modals > 0:
-            self.extra_downsample_layers = nn.ModuleList()
-            self.extra_blocks = nn.ModuleList()
-            self.extra_norms = nn.ModuleList()
-            self.FRMs = nn.ModuleList()
-            self.FFMs = nn.ModuleList()
-        
-        if self.num_modals > 1:
-            self.extra_score_predictor = nn.ModuleList([
-                PredictorConv(embed_dims[i], self.num_modals) for i in range(len(depths))
+            self.extra_downsample_layers = nn.ModuleList([
+                PatchEmbedParallel(3, embed_dims[0], 7, 4, 7//2, self.num_modals),
+                *[PatchEmbedParallel(embed_dims[i], embed_dims[i+1], 3, 2, 3//2, self.num_modals) for i in range(3)]
             ])
-            
+        if self.num_modals > 1:
+            self.extra_score_predictor = nn.ModuleList([PredictorConv(embed_dims[i], self.num_modals) for i in range(len(depths))])
+
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        
         cur = 0
-        num_heads = [1, 2, 5, 8]
-
-        for i in range(4): # 4개의 스테이지
-            self.patch_embeds.append(PatchEmbed(
-                c1=3 if i == 0 else embed_dims[i-1], c2=embed_dims[i],
-                patch_size=7 if i == 0 else 3, stride=4 if i == 0 else 2,
-                padding=7//2 if i == 0 else 3//2))
+        self.block1 = nn.ModuleList([Block(embed_dims[0], 1, 8, dpr[cur+i]) for i in range(depths[0])])
+        self.norm1 = nn.LayerNorm(embed_dims[0])
+        if self.num_modals > 0:
+            self.extra_block1 = nn.ModuleList([MSPABlock(embed_dims[0], mlp_ratio=8, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[0])]) # --- MSPABlock
+            self.extra_norm1 = ConvLayerNorm(embed_dims[0])
             
-            self.blocks.append(nn.ModuleList([
-                Block(embed_dims[i], num_heads[i], sr_ratio=[8,4,2,1][i], dpr=dpr[cur + j]) for j in range(depths[i])]))
-            
-            self.norms.append(nn.LayerNorm(embed_dims[i]))
-            cur += depths[i]
+        cur += depths[0]
+        self.block2 = nn.ModuleList([Block(embed_dims[1], 2, 4, dpr[cur+i]) for i in range(depths[1])])
+        self.norm2 = nn.LayerNorm(embed_dims[1])
+        if self.num_modals > 0:
+            self.extra_block2 = nn.ModuleList([MSPABlock(embed_dims[1], mlp_ratio=8, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[1])])
+            self.extra_norm2 = ConvLayerNorm(embed_dims[1])
 
-            if self.num_modals > 0:
-                self.extra_downsample_layers.append(PatchEmbedParallel(
-                    c1=3 if i == 0 else embed_dims[i-1], c2=embed_dims[i],
-                    patch_size=7 if i == 0 else 3, stride=4 if i == 0 else 2,
-                    padding=7//2 if i == 0 else 3//2, num_modals=self.num_modals))
-                
-                self.extra_blocks.append(nn.ModuleList([
-                    MSPABlock(embed_dims[i], mlp_ratio=[8,8,4,4][i], drop_path=dpr[cur-depths[i]+j], norm_cfg=norm_cfg) for j in range(depths[i])]))
-                
-                self.extra_norms.append(ConvLayerNorm(embed_dims[i]))
-                self.FRMs.append(FRM(dim=embed_dims[i], reduction=1))
-                self.FFMs.append(FFM(dim=embed_dims[i], reduction=1, num_heads=num_heads[i], norm_layer=nn.BatchNorm2d))
+        cur += depths[1]
+        self.block3 = nn.ModuleList([Block(embed_dims[2], 5, 2, dpr[cur+i]) for i in range(depths[2])])
+        self.norm3 = nn.LayerNorm(embed_dims[2])
+        if self.num_modals > 0:
+            self.extra_block3 = nn.ModuleList([MSPABlock(embed_dims[2], mlp_ratio=4, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[2])])
+            self.extra_norm3 = ConvLayerNorm(embed_dims[2])
 
-    def tokenselect2(self, x_ext: List[Tensor], module: nn.Module) -> Tuple[Tensor, List[Tensor], Tensor]:
-        """
-        [개선된 Soft Mix + 로깅 버전]
-        기존 soft mix 로직을 유지하면서, 각 모달리티의 기여도를 담고 있는
-        attention_weights 맵을 추가로 반환합니다.
-        """
-        x_scores = module(x_ext)
-        stacked_scores = torch.cat(x_scores, dim=1)
-        attention_weights = F.softmax(stacked_scores, dim=1)
-        
-        stacked_features = torch.stack(x_ext, dim=1)
-        weighted_features = stacked_features * attention_weights.unsqueeze(2)
-        x_f = torch.sum(weighted_features, dim=1)
-        
-        return x_f, x_scores, attention_weights
-    
+        cur += depths[2]
+        self.block4 = nn.ModuleList([Block(embed_dims[3], 8, 1, dpr[cur+i]) for i in range(depths[3])])
+        self.norm4 = nn.LayerNorm(embed_dims[3])
+        if self.num_modals > 0:
+            self.extra_block4 = nn.ModuleList([MSPABlock(embed_dims[3], mlp_ratio=4, drop_path=dpr[cur+i], norm_cfg=norm_cfg) for i in range(extra_depths[3])])
+            self.extra_norm4 = ConvLayerNorm(embed_dims[3])
 
+        if self.num_modals > 0:
+            num_heads = [1,2,5,8]
+            self.FRMs = nn.ModuleList([
+                FRM(dim=embed_dims[0], reduction=1),
+                FRM(dim=embed_dims[1], reduction=1),
+                FRM(dim=embed_dims[2], reduction=1),
+                FRM(dim=embed_dims[3], reduction=1)])
+            self.FFMs = nn.ModuleList([
+                FFM(dim=embed_dims[0], reduction=1, num_heads=num_heads[0], norm_layer=nn.BatchNorm2d),
+                FFM(dim=embed_dims[1], reduction=1, num_heads=num_heads[1], norm_layer=nn.BatchNorm2d),
+                FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
+                FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
+
+    def tokenselect(self, x_ext, module):    
+        x_scores = module(x_ext)                            #score 에서 token을 선택
+        for i in range(len(x_ext)):
+            x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
+        stacked_x_ext = torch.stack(x_ext, dim=1) 
+        x_f, x_f_indices = torch.max(stacked_x_ext, dim=1) 
+        return x_f, x_scores, x_f_indices
+     
     def forward(self, x: list) -> list:
-        x_cam_input = x[0]
-        x_ext_input_list = x[1:] if self.num_modals > 0 else []
-        B = x_cam_input.shape[0]
+        modal_list = ["depth", "ir", "lidar"]
+        x_cam = x[0]        
+        if self.num_modals > 0:
+            x_ext = x[1:]
+        B = x_cam.shape[0]
         outs = []
-
-        # ✅ [최종 수정] for 루프를 사용하여 버그 없는 안정적인 구조로 변경
-        for i in range(4):
-            x_cam, H, W = self.patch_embeds[i](x_cam_input)
-            for blk in self.blocks[i]:
-                x_cam = blk(x_cam, H, W)
-            x_cam_out = self.norms[i](x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
-
-            if self.num_modals > 0:
-                x_ext_embedded, _, _ = self.extra_downsample_layers[i](x_ext_input_list)
-                x_f, x_scores, attention_weights = self.tokenselect(x_ext_embedded, self.extra_score_predictor[i]) if self.num_modals > 1 else (x_ext_embedded[0], None, None)
-                
-                for blk in self.extra_blocks[i]:
-                    x_f = blk(x_f)
-                x_f_processed = self.extra_norms[i](x_f)
-
-                x_cam_rect, x_f_rect = self.FRMs[i](x_cam_out, x_f_processed)
-                x_fused = self.FFMs[i](x_cam_rect, x_f_rect)
-                
-                # ✅ [최종 수정] DDP 호환 및 성능 최적화된 로깅 로직
-                if x_scores is not None:
-                    is_dist = dist.is_available() and dist.is_initialized()
-                    if not is_dist or dist.get_rank() == 0:
-                        if self.training:
-                            if wandb:
-                                a_dict = {}
-                                for j, modal in enumerate(self.modals):
-                                    if j < len(x_scores):
-                                        a_dict[f"stage{i+1}_score_{modal}"] = x_scores[j].mean().item()
-                                wandb.log(a_dict)
-                        else:
-                            if wandb and not self._has_logged_this_epoch:
-                                log_soft_mix_stats(
-                                    attention_map=attention_weights,
-                                    modality_names=self.modals,
-                                    log_prefix=f"val/stage{i+1}")
-                
-                outs.append(x_fused)
-                x_cam_input = x_fused
-                x_ext_input_list = [x.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x_f_rect for x in x_ext_embedded] if self.num_modals > 1 else [x_f_rect]
+        # stage 1
+        print("[INFO] Stage1")
+        x_cam, H, W = self.patch_embed1(x_cam)
+        for blk in self.block1:
+            x_cam = blk(x_cam, H, W)
+        x1_cam = self.norm1(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        if self.num_modals > 0:
+            x_ext, _, _ = self.extra_downsample_layers[0](x_ext)
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[0]) if self.num_modals > 1 else (x_ext[0], None)    
+            for blk in self.extra_block1:
+                x_f = blk(x_f)
+            x1_f_ = self.extra_norm1(x_f)
+            x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f_)
+            x_fused = self.FFMs[0](x1_cam, x1_f)
             
-            else:
-                outs.append(x_cam_out)
-                x_cam_input = x_cam_out
+            if x_scores is not None and self.training is False:
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage1_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+                    if self.iter % 1000 ==0:
+                            ppx_image = create_tensor_grid_image(
+                                x1_f_, title="Stage 1 - PPX Features")
+                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
 
-        if not self.training:
-            is_dist = dist.is_available() and dist.is_initialized()
-            if not is_dist or dist.get_rank() == 0:
-                if wandb and not self._has_logged_this_epoch:
-                    self._has_logged_this_epoch = True
+                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
+                            frm_image = create_tensor_grid_image(
+                                x1_cam, title="Stage 1 - FRM Input (RGB Features)")
+                            wandb.log({"val/stage1_FRM_input": wandb.Image(frm_image)})
+                            
+                            # FFM 최종 융합 피쳐맵 생성 및 로깅
+                            ffm_image = create_tensor_grid_image(
+                                x_fused, title="Stage 1 - Fused Features (FFM Output)")
+                            wandb.log({"val/stage1_FFM": wandb.Image(ffm_image)})
+
+                            # 승자 인덱스 맵 생성 및 로깅
+                            if winner_indices is not None:
+                                winner_map_image = create_channel_winners_image(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    title='Stage 1 - Modality Winner per Channel'
+                                )
+                                wandb.log({"val/stage1_channel_winners": wandb.Image(winner_map_image)})
+
+            outs.append(x_fused)
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
+        else:
+            outs.append(x1_cam)
+        print("[INFO] Stage2")
+
+        # stage 2
+        x_cam, H, W = self.patch_embed2(x1_cam)
+        for blk in self.block2:
+            x_cam = blk(x_cam, H, W)
+        x2_cam = self.norm2(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        if self.num_modals > 0:
+            x_ext, _, _ = self.extra_downsample_layers[1](x_ext)
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[1]) if self.num_modals > 1 else (x_ext[0], None)    
+            for blk in self.extra_block2:
+                x_f = blk(x_f)
+            x2_f_ = self.extra_norm2(x_f)
+            x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
+            x_fused = self.FFMs[1](x2_cam, x2_f)
+            if x_scores is not None and self.training is False:
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    import wandb
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage2_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+    
+                    if self.iter % 1000 ==0:
+                            ppx_image = create_tensor_grid_image(
+                                x1_f_, title="Stage 1 - PPX Features")
+                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
+
+                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
+                            frm_image = create_tensor_grid_image(
+                                x1_cam, title="Stage 2 - FRM Input (RGB Features)")
+                            wandb.log({"val/stage2_FRM_input": wandb.Image(frm_image)})
+                            
+                            # FFM 최종 융합 피쳐맵 생성 및 로깅
+                            ffm_image = create_tensor_grid_image(
+                                x_fused, title="Stage 2 - Fused Features (FFM Output)")
+                            wandb.log({"val/stage2_FFM": wandb.Image(ffm_image)})
+
+                            # 승자 인덱스 맵 생성 및 로깅
+                            if winner_indices is not None:
+                                winner_map_image = create_channel_winners_image(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    title='Stage 2 - Modality Winner per Channel'
+                                )
+                                wandb.log({"val/stage2_channel_winners": wandb.Image(winner_map_image)})
+
+            outs.append(x_fused)
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
+        else:
+            outs.append(x2_cam)
+
+        # stage 3
+        print("[INFO] Stage3")
+        x_cam, H, W = self.patch_embed3(x2_cam)
+        for blk in self.block3:
+            x_cam = blk(x_cam, H, W)
+        x3_cam = self.norm3(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        if self.num_modals > 0:
+            x_ext, _, _ = self.extra_downsample_layers[2](x_ext)
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[2]) if self.num_modals > 1 else (x_ext[0], None)    
+            for blk in self.extra_block3:
+                x_f = blk(x_f)
+            x3_f_ = self.extra_norm3(x_f)
+            x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
+            x_fused = self.FFMs[2](x3_cam, x3_f)
+            if x_scores is not None and self.training is False:
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage3_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+                    if self.iter % 1000 ==0:
+                            ppx_image = create_tensor_grid_image(
+                                x1_f_, title="Stage 1 - PPX Features")
+                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
+
+                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
+                            frm_image = create_tensor_grid_image(
+                                x1_cam, title="Stage 3 - FRM Input (RGB Features)")
+                            wandb.log({"val/stage3_FRM_input": wandb.Image(frm_image)})
+                            
+                            # FFM 최종 융합 피쳐맵 생성 및 로깅
+                            ffm_image = create_tensor_grid_image(
+                                x_fused, title="Stage 3 - Fused Features (FFM Output)")
+                            wandb.log({"val/stage3_FFM": wandb.Image(ffm_image)})
+
+                            # 승자 인덱스 맵 생성 및 로깅
+                            if winner_indices is not None:
+                                winner_map_image = create_channel_winners_image(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    title='Stage 3 - Modality Winner per Channel'
+                                )
+                                wandb.log({"val/stage3_channel_winners": wandb.Image(winner_map_image)})
+            outs.append(x_fused)
+            x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
+        else:
+            outs.append(x3_cam)
+
+        # stage 4
+        print("[INFO] Stage4")
+        x_cam, H, W = self.patch_embed4(x3_cam)
+        for blk in self.block4:
+            x_cam = blk(x_cam, H, W)
+        x4_cam = self.norm4(x_cam).reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        if self.num_modals > 0:
+            x_ext, _, _ = self.extra_downsample_layers[3](x_ext)
+            x_f, x_scores, winner_indices = self.tokenselect(x_ext, self.extra_score_predictor[3]) if self.num_modals > 1 else (x_ext[0], None)    
+            for blk in self.extra_block4:
+                x_f = blk(x_f)
+            
+            x4_f_ = self.extra_norm4(x_f)
+            x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
+            x_fused = self.FFMs[3](x4_cam, x4_f)
+            if x_scores is not None and self.training is False:
+                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
+                if rank == 0 or rank == -1:
+                    a_dict = {}
+                    for i, modal in enumerate(modal_list):
+                        if i < len(x_scores):
+                            a_dict[f"rank_{rank}_stage4_score_{modal}"] = x_scores[i].mean().item()
+                    wandb.log(a_dict)
+                    if self.iter % 1000 ==0:
+                            ppx_image = create_tensor_grid_image(
+                                x1_f_, title="Stage 1 - PPX Features")
+                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
+
+                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
+                            frm_image = create_tensor_grid_image(
+                                x1_cam, title="Stage 4 - FRM Input (RGB Features)")
+                            wandb.log({"val/stage4_FRM_input": wandb.Image(frm_image)})
+                            
+                            # FFM 최종 융합 피쳐맵 생성 및 로깅
+                            ffm_image = create_tensor_grid_image(
+                                x_fused, title="Stage 4 - Fused Features (FFM Output)")
+                            wandb.log({"val/stage4_FFM": wandb.Image(ffm_image)})
+
+                            # 승자 인덱스 맵 생성 및 로깅
+                            if winner_indices is not None:
+                                winner_map_image = create_channel_winners_image(
+                                    winner_indices=winner_indices,
+                                    modality_names=self.modals,
+                                    title='Stage 4 - Modality Winner per Channel'
+                                )
+                                wandb.log({"val/stage4_channel_winners": wandb.Image(winner_map_image)})
+            outs.append(x_fused)
+        else:
+            outs.append(x4_cam)
 
         return outs
-    
-def create_soft_mix_contribution_map(
-    attention_map: Tensor,
-    batch_idx: int = 0
-) -> np.ndarray:
-    """
-    Soft-Mix의 결과인 attention_map을 입력받아, 각 모달리티의 기여도를
-    RGB 채널에 매핑한 NumPy 이미지 배열을 생성합니다.
-
-    Args:
-        attention_map (Tensor): (B, num_modals, H, W) 크기의 attention weight 텐서.
-        batch_idx (int): 시각화할 배치의 인덱스.
-
-    Returns:
-        np.ndarray: (H, W, 3) 형태의 uint8 RGB 이미지 배열.
-    """
-    import numpy as np
-    import torch
-
-    # 배치에서 하나를 선택하고 CPU로 이동
-    attention_map_single = attention_map[batch_idx].cpu()
-    num_modals, h, w = attention_map_single.shape
-
-    # (H, W, 3) 크기의 빈 RGB 캔버스 생성
-    contribution_rgb = torch.zeros((h, w, 3), dtype=torch.float32)
-
-    # 각 모달리티의 기여도를 RGB 채널에 순서대로 매핑
-    if num_modals >= 1:
-        contribution_rgb[:, :, 0] = attention_map_single[0]  # 첫 번째 모달리티 -> Red 채널
-    if num_modals >= 2:
-        contribution_rgb[:, :, 1] = attention_map_single[1]  # 두 번째 모달리티 -> Green 채널
-    if num_modals >= 3:
-        contribution_rgb[:, :, 2] = attention_map_single[2]  # 세 번째 모달리티 -> Blue 채널
-    # (보조 모달리티가 3개 초과 시, 추가 모달리티는 시각화에서 제외됨)
-
-    # 0~1 범위의 float 값을 0~255 범위의 uint8 값으로 변환
-    image_array = (contribution_rgb.numpy() * 255).astype(np.uint8)
-
-    return image_array
-
-def log_soft_mix_stats(attention_map: Tensor, modality_names: List[str], log_prefix: str, batch_idx: int = 0):
-    if wandb is None or attention_map is None:
-        return
-    # 텍스트 통계 로깅
-    avg_contributions = attention_map[batch_idx].mean(dim=[1, 2])
-    stats_dict = {}
-    for i, name in enumerate(modality_names):
-        stats_dict[f"{log_prefix}_contribution/{name}"] = avg_contributions[i].item()
-    wandb.log(stats_dict)
-    
-    # 시각화 맵 이미지 생성 및 로깅
-    image_array = create_soft_mix_contribution_map(attention_map, modality_names, "Contribution Map", batch_idx)
-    wandb.log({f"{log_prefix}_contribution_map": wandb.Image(image_array)})
-    
-    
-    
 
 def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.png'):
     """
@@ -820,9 +925,14 @@ def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.
     plt.close()
     print(f"Saved 12-channel Grad-CAM style grid to {save_path}")
     
-    
-    
-def vis_tensor_single_batch(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
+def save_tensor_single_batch(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
+    '''
+    Visualize a 3D tensor (C, H, W) as a single image by stacking channels along width.
+    Args:
+        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
+        batch (int): Batch index if tensor has a batch dimension.
+        save_path (str): Path to save the image.
+    '''
     import matplotlib.pyplot as plt
     import numpy as np
     tensor = tensor[batch]
@@ -840,8 +950,15 @@ def vis_tensor_single_batch(tensor:torch.tensor, batch=0, save_path='vis_tensor.
     plt.savefig(save_path)
     plt.close()
     
+def save_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
+    '''
+    Visualize each channel of a 3D tensor (C, H, W) in a grid layout using a colormap.
+    Args:
+        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
+        batch (int): Batch index if tensor has a batch dimension.
+        save_path (str): Path to save the grid image.
+    '''
     
-def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
     import matplotlib.pyplot as plt
     import numpy as np
     
@@ -867,55 +984,182 @@ def vis_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_te
     plt.savefig(save_path)
     plt.close()
     print(f"Saved tensor visualization grid to {save_path}")
-    
 
-    
-
-def log_soft_mix_stats(
-        attention_map: Tensor,
-        modality_names: List[str],
-        log_prefix: str,
-        batch_idx: int = 0
-        ):
+def save_channel_winners(
+    winner_indices: torch.Tensor,
+    modality_names: List[str],
+    save_path: str = 'feature_map.png',
+    title: str = 'Modality Winner Map per Channel',
+    batch_idx: int = 0
+):
     """
-    Soft Mix의 기여도 통계를 계산하고 시각화하여 wandb에 로깅합니다.
+    (B, C, H, W) 형태의 다중 채널 '승자 인덱스' 맵을 입력받아,
+    각 채널을 R,G,B로 색칠된 이미지로 변환하고 그리드 형태로 시각화하여 저장
     """
-    if wandb is None or attention_map is None:
-        return
+    import matplotlib.pyplot as plt
+    import numpy as np
 
-    # --- 1. 텍스트 통계 로깅 (평균 기여도) ---
-    # attention_map shape: (B, num_modals, H, W)
-    avg_contributions = attention_map[batch_idx].mean(dim=[1, 2]) # 각 모달리티 맵의 평균값 계산
+    # 4D 텐서(B, C, H, W)일 경우, 지정된 배치만 선택
+    if winner_indices.dim() == 4:
+        winner_indices = winner_indices[batch_idx]
     
-    stats_dict = {}
-    for i, name in enumerate(modality_names):
-        # 예: "val/stage1_contribution/depth": 0.354 (35.4%)
-        stats_dict[f"{log_prefix}_contribution/{name}"] = avg_contributions[i].item()
-    wandb.log(stats_dict)
+    indices_np = winner_indices.detach().cpu().numpy()
+    C, H, W = indices_np.shape
 
-    # --- 2. 시각화 맵 로깅 (RGB 기여도 맵) ---
-    # 각 모달리티의 기여도를 R, G, B 채널에 매핑합니다.
-    # (주의: 보조 모달리티가 3개일 때 가장 직관적입니다)
-    num_modals = attention_map.shape[1]
-    if num_modals >= 3:
-        # (num_modals, H, W) -> (H, W, num_modals) -> (H, W, 3)
-        contribution_rgb = attention_map[batch_idx][:3].permute(1, 2, 0)
-    elif num_modals == 2:
-        # R, G 채널만 사용하고 B는 0으로 채웁니다.
-        zeros = torch.zeros_like(attention_map[batch_idx][0])
-        contribution_rgb = torch.stack([attention_map[batch_idx][0], attention_map[batch_idx][1], zeros], dim=-1)
-    else: # num_modals == 1
-        # R 채널만 사용 (흑백)
-        ch = attention_map[batch_idx][0]
-        contribution_rgb = torch.stack([ch, ch, ch], dim=-1)
+    # 그리드 크기 계산 (예: 64채널 -> 8x8)
+    ncols = int(np.ceil(np.sqrt(C)))
+    nrows = int(np.ceil(C / ncols))
 
-    # 0~1 범위를 0~255 범위의 이미지로 변환
-    color_map_np = (contribution_rgb * 255).byte().cpu().numpy()
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
+    axes = axes.flatten()
     
-    # wandb에 이미지 로깅
-    caption = ""
+    # 전체 제목 추가 (범례 역할 포함)
+    legend_str = "Colors  :  "
     for i, name in enumerate(modality_names):
         if i < 3:
-            caption += f"{['R', 'G', 'B'][i]}:{name} "
+            legend_str += f"{['R', 'G', 'B'][i]}:{name}  "
+    fig.suptitle(f'{title}\n({legend_str.strip()})', fontsize=16)
+
+    # ✅ [핵심] 컬러 팔레트를 미리 정의
+    color_palette = np.array([
+        [255, 0, 0],   # 인덱스 0 (Red)
+        [0, 255, 0],   # 인덱스 1 (Green)
+        [0, 0, 255],   # 인덱스 2 (Blue)
+        [255, 255, 0]  # 인덱스 3 (Yellow)
+    ], dtype=np.uint8)
+    
+    for i in range(C):
+        # i번째 채널의 인덱스 맵을 가져옴. Shape: (H, W)
+        index_map = indices_np[i]
+        
+        # ✅ [핵심] (H, W) 인덱스 맵을 (H, W, 3) RGB 이미지로 변환
+        rgb_image = color_palette[index_map]
+        
+        ax = axes[i]
+        # ✅ [핵심] cmap이 아닌, 변환된 RGB 이미지를 직접 그림
+        ax.imshow(rgb_image)
+        ax.axis('off')
+        ax.set_title(f"Ch: {i}", fontsize=10)
+    
+    # 사용하지 않는 나머지 subplot 숨기기
+    for j in range(C, len(axes)):
+        axes[j].axis('off')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.92]) # suptitle과 겹치지 않도록 조정
+    plt.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved channel winner visualization to {save_path}")
+
+
+def create_tensor_grid_image(
+    tensor: torch.Tensor,
+    title: str = 'Feature Map Channels',
+    batch_idx: int = 0
+) -> np.ndarray:
+    """
+    [개선된 버전]
+    (B, C, H, W) 또는 (C, H, W) 형태의 텐서를 입력받아, 모든 채널을
+    그리드 형태로 시각화하고 그 결과를 NumPy 이미지 배열로 반환합니다.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if tensor.dim() == 4:
+        tensor = tensor[batch_idx]
+    
+    tensor_np = tensor.detach().cpu().numpy()
+    C, H, W = tensor_np.shape
+
+    ncols = int(np.ceil(np.sqrt(C)))
+    nrows = int(np.ceil(C / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
+    axes = axes.flatten()
+    
+    fig.suptitle(title, fontsize=16)
+    
+    for i in range(C):
+        channel_feature = tensor_np[i]
+        if channel_feature.max() > channel_feature.min():
+            channel_feature = (channel_feature - channel_feature.min()) / (channel_feature.max() - channel_feature.min())
             
-    wandb.log({f"{log_prefix}_contribution_map": wandb.Image(color_map_np, caption=caption.strip())})
+        ax = axes[i]
+        ax.imshow(channel_feature, cmap='jet')
+        ax.axis('off')
+        ax.set_title(f"Ch: {i}", fontsize=10)
+    
+    for j in range(C, len(axes)):
+        axes[j].axis('off')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    
+    # ✅ Figure를 파일로 저장하는 대신 RGB 버퍼로 렌더링
+    fig.canvas.draw()
+    img_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+    # ✅ Figure 객체를 닫아 메모리 누수 방지
+    plt.close(fig)
+
+    return img_array
+
+
+def create_channel_winners_image(
+    winner_indices: torch.Tensor,
+    modality_names: List[str],
+    title: str = 'Modality Winner Map per Channel',
+    batch_idx: int = 0
+) -> np.ndarray:
+    """
+    [개선된 버전]
+    다중 채널 '승자 인덱스' 맵의 시각화 이미지를 생성하여,
+    파일로 저장하는 대신 NumPy 배열로 반환합니다.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if winner_indices.dim() == 4:
+        winner_indices = winner_indices[batch_idx]
+    
+    indices_np = winner_indices.detach().cpu().numpy()
+    C, H, W = indices_np.shape
+
+    ncols = int(np.ceil(np.sqrt(C)))
+    nrows = int(np.ceil(C / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
+    axes = axes.flatten()
+    
+    legend_str = "Colors: "
+    for i, name in enumerate(modality_names):
+        if i < 3:
+            legend_str += f"{['R', 'G', 'B'][i]}:{name}  "
+    fig.suptitle(f'{title}\n({legend_str.strip()})', fontsize=16)
+
+    color_palette = np.array([
+        [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]
+    ], dtype=np.uint8)
+    
+    for i in range(C):
+        index_map = indices_np[i]
+        rgb_image = color_palette[index_map]
+        
+        ax = axes[i]
+        ax.imshow(rgb_image)
+        ax.axis('off')
+        ax.set_title(f"Ch: {i}", fontsize=10)
+    
+    for j in range(C, len(axes)):
+        axes[j].axis('off')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    
+    # ✅ Figure를 파일로 저장하는 대신 RGB 버퍼로 렌더링
+    fig.canvas.draw()
+    img_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+    # ✅ Figure 객체를 닫아 메모리 누수 방지
+    plt.close(fig)
+    
+    return img_array

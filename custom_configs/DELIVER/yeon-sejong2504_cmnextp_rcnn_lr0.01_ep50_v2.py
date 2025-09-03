@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco/'
+data_root = '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -22,6 +22,12 @@ train_pipeline = [
         keep_ratio=True,
         bbox_format='xywh'
     ),
+    # dict(
+    #     type = 'DELIVERRandomMasking',
+    #     masking_index=[0,1,2,3],
+    #     mask_ratio = 0.3,
+    #     patch_size=4,
+    # ),
     dict(
         type='DELIVERRandomFlip',
         prob=0.5,
@@ -51,12 +57,12 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='CMNeXtPBackbone',
+        backbone='CMNeXtP-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        pretrained='/home/jovyan/SSDc/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
         # pretrained='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
@@ -161,7 +167,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -170,7 +176,6 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
         data_prefix=dict(img='images'),
-        filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
     ),
@@ -187,7 +192,6 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
         data_prefix=dict(img='images'),
-        filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
         metainfo=dict(classes=classes)
@@ -214,13 +218,12 @@ param_scheduler = [
         end=500),
     dict(
         type='CosineAnnealingLR',
-        T_max=50, # 🔥 전체 epoch 수와 일치
+        T_max=50,
         by_epoch=True,
-        begin=0, # 🔥 Warmup 직후부터 시작
+        begin=1,  # 0 → 1로 변경 (warmup 이후 시작)
         end=50,
         eta_min=1e-6)
 ]
-
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
@@ -229,11 +232,6 @@ optim_wrapper = dict(
 )
 
 
-# # Hooks, Logger, Visualizer (기존 설정 유지)
-# default_hooks = _base_.default_hooks
-# log_processor = _base_.log_processor
-# vis_backends = _base_.vis_backends
-# visualizer = _base_.visualizer
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -241,7 +239,7 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
+            name='sejong2504_cmnextmasked_b2_rcnn_multiscale_v2',
             tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
@@ -295,9 +293,7 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
+experiment_name = 'sejong2504_cmnextp_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
-
-
 
 find_unused_parameters = True
