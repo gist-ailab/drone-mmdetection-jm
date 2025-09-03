@@ -129,7 +129,7 @@ class SejongMultimodalVisualizer:
     def add_modality_labels(self, concat_img: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
         """ 각 모달리티 영역에 라벨 추가 """
         h, w = img_shape
-        modality_labels = {'RGB': (20, 30), 'Depth': (w + 20, 30), 'Event': (20, h + 30), 'LiDAR': (w + 20, h + 30)}
+        modality_labels = {'RGB': (20, 30), 'Depth': (w + 20, 30), 'IR': (20, h + 30), 'LiDAR': (w + 20, h + 30)}
         for label, (x, y) in modality_labels.items():
             cv2.putText(concat_img, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
         return concat_img
@@ -200,6 +200,8 @@ class SejongMultimodalVisualizer:
     @torch.no_grad()
     def visualize_from_validation_set(self, output_dir: str, num_samples: int = 10, score_threshold: float = 0.3):
         os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(os.path.join(output_dir, 'w_gt'), exist_ok = True)
+        os.makedirs(os.path.join(output_dir, 'wo_gt'), exist_ok = True)
         val_dataset_cfg = self.cfg.val_dataloader.dataset
         dataset = DATASETS.build(val_dataset_cfg)
 
@@ -255,7 +257,8 @@ class SejongMultimodalVisualizer:
             # 시각화를 위한 원본 RGB 이미지 경로 (리스트의 첫 번째 항목)
             rgb_img_path = original_data_sample.img_path[0]
             img_id = Path(rgb_img_path).stem
-            output_path = os.path.join(output_dir, f'{img_id}_GT_and_Pred.jpg')
+            output_path_wgt = os.path.join(output_dir,'w_gt',  f'{img_id}.jpg')
+            output_path_wogt = os.path.join(output_dir,'wo_gt', f'{img_id}.jpg')
             
             print(f"[{i+1}/{num_samples}] 처리 중: {img_id}")
 
@@ -267,12 +270,15 @@ class SejongMultimodalVisualizer:
             # 박스 그리기 및 저장
             # result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, text_prefix="GT", base_color=(255, 255, 255))
             # result_img = self.draw_boxes(concat_img, pred_boxes, pred_labels, img_shape, text_prefix="Pred")
-            result_img = self.draw_boxes(concat_img, gt_boxes, gt_labels, img_shape, 
-                                text_prefix="GT", base_color=(255, 255, 255), box_format='xywh')
-            result_img = self.draw_boxes(result_img, pred_boxes, pred_labels, img_shape, 
+            result_img = self.draw_boxes(concat_img, pred_boxes, pred_labels, img_shape, 
                                          text_prefix="Pred", box_format='xyxy')
             result_img = self.add_modality_labels(result_img, img_shape)
-            cv2.imwrite(output_path, cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+
+            cv2.imwrite(output_path_wogt, cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+            result_img = self.draw_boxes(result_img, gt_boxes, gt_labels, img_shape, 
+                                text_prefix="GT", base_color=(255, 255, 255), box_format='xywh')
+
+            cv2.imwrite(output_path_wgt, cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
 
         print(f"\n시각화 완료! 결과는 '{output_dir}' 폴더에 저장되었습니다.")
 
@@ -280,9 +286,10 @@ def main():
     # ... (main 함수는 변경 없음) ...
     parser = argparse.ArgumentParser(description='Sejong Multimodal Detection Visualization based on Validation Set')
     parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/lecun-sejong2504_cmnext_rcnn_lr0.01_ep50_v3.py', help='모델 config 파일 경로')
-    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnext_b2_rcnn_multigpu_v3/best_coco_bbox_mAP_epoch_5.pth', help='모델 weight 파일 경로')
-    parser.add_argument('--output-dir', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/multimodal_inference_with_gt', help='시각화 결과 저장 디렉토리')
-    parser.add_argument('--num-samples', type=int, default=100, help='시각화할 샘플 수')
+    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnext_b2_rcnn_multigpu_v3/best_coco_bbox_mAP_epoch_40.pth', help='모델 weight 파일 경로')
+    # parser.add_argument('--output-dir', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/multimodal_inference_with_gt_epoch35', help='시각화 결과 저장 디렉토리')
+    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/cmnext_inference_ep40', help='시각화 결과 저장 디렉토리')
+    parser.add_argument('--num-samples', type=int, default=7796, help='시각화할 샘플 수')
     parser.add_argument('--score-threshold', type=float, default=0.3, help='신뢰도 임계값')
     parser.add_argument('--device', default='cuda:0', help='사용할 디바이스')
     args = parser.parse_args()

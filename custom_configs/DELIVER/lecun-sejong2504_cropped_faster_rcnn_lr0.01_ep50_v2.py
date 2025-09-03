@@ -12,23 +12,22 @@ custom_imports = dict(
     imports=['mmdet.visualization'],
     allow_failed_imports=False)
 
-data_root = '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
-dataset_type = 'SejongDetectionDataset'
+data_root = '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped/'
+dataset_type = 'CocoDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 backend_args = None
 
-# 🔥 1. 데이터 파이프라인 재정의 (가장 중요한 변경점)
 # -----------------------------------------------------------------
 train_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', scale=(480, 640), keep_ratio=True),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PackDetInputs')
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile', backend_args=backend_args),
-    dict(type='Resize', scale=(4980, 640), keep_ratio=True),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
     # If you don't have a gt annotation, delete the pipeline
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
@@ -48,15 +47,15 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=32,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/train.json',
-        data_prefix=dict(img='images'),
+        ann_file=f'{data_root}labels/train_cropped.json',
+        data_prefix=dict(img=''),
         filter_cfg=dict(filter_empty_gt=True, min_size=2),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -72,8 +71,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/test.json',
-        data_prefix=dict(img='images'),
+        ann_file=f'{data_root}labels/test_cropped.json',
+        data_prefix=dict(img=''),
         test_mode=True,
         pipeline=test_pipeline,
         metainfo=dict(classes=classes)
@@ -95,7 +94,7 @@ test_cfg = dict(type='TestLoop')
 param_scheduler = [
     dict(
         type='LinearLR',
-        start_factor=0.000,
+        start_factor=0.001,
         by_epoch=False,
         begin=0,
         end=500),
@@ -110,13 +109,13 @@ param_scheduler = [
 
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001),
+    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
     accumulative_counts=4
 )
 
 
-experiment_name = 'sejong2504_faster_rcnn__v2'
+experiment_name = 'sejong2504_faster_rcnn_cropped_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 vis_backends = [
