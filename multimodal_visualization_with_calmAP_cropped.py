@@ -1,19 +1,24 @@
-#!/usr/bin/env python3
 import os
 import cv2
 import torch
 import numpy as np
 from pathlib import Path
 import argparse
-import colorsys 
+import colorsys
 import mmengine
+import json
+import tempfile
 from mmengine.registry import init_default_scope, METRICS
 from mmdet.apis import init_detector
-from mmdet.registry import DATASETS # 중복 import 하나 제거
+from mmdet.registry import DATASETS
 from typing import Tuple, Dict, List, Optional
 import wandb
 from mmdet.structures import DetDataSample
 from mmengine.structures import InstanceData
+
+# ✨ pycocotools API를 직접 사용하기 위해 import
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 # 사용자의 커스텀 모듈 등록
 from mcdet import *
@@ -102,13 +107,9 @@ class SejongMultimodalVisualizer:
         target_modalities = draw_on if draw_on else modality_offsets.keys()
         for bbox, label in zip(boxes, labels):
             if box_format == 'xywh':
-                x, y, box_w, box_h = bbox.astype(int)
-                x1, y1, x2, y2 = x, y, x + box_w, y + box_h
-            else: # xyxy
-                x1, y1, x2, y2 = bbox.astype(int)
-            
-            class_name = self.classes[label]
-            color = self.colors[label % len(self.colors)]
+                x, y, box_w, box_h = bbox.astype(int); x1, y1, x2, y2 = x, y, x + box_w, y + box_h
+            else: x1, y1, x2, y2 = bbox.astype(int)
+            class_name = self.classes[label]; color = self.colors[label % len(self.colors)]
             label_text = f'{text_prefix}: {class_name}'
             for modality in target_modalities:
                 if modality not in modality_offsets: continue
@@ -120,36 +121,21 @@ class SejongMultimodalVisualizer:
                 cv2.putText(image, label_text, (x1_s, y1_s - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
         return image
     
-    # ✨ 최적화된 함수
     def draw_translucent_boxes(self, image: np.ndarray, boxes: np.ndarray, labels: np.ndarray,
                                img_shape: Tuple[int, int], text_prefix: str,
-                               box_format: str = 'xyxy',
-                               draw_on: List[str] = None,
-                               alpha: float = 0.5) -> np.ndarray:
-        output_img = image.copy()
-        overlay = output_img.copy()
-        h, w = img_shape
-        modality_offsets = {'rgb': (0, 0), 'depth': (0, w), 'event': (h, 0), 'lidar': (h, w)}
+                               box_format: str = 'xyxy', draw_on: List[str] = None, alpha: float = 0.5) -> np.ndarray:
+        output_img = image.copy(); overlay = output_img.copy()
+        h, w = img_shape; modality_offsets = {'rgb': (0, 0), 'depth': (0, w), 'event': (h, 0), 'lidar': (h, w)}
         target_modalities = draw_on if draw_on else modality_offsets.keys()
-        
-        # ✨ 1. 그리기 정보를 미리 계산하여 저장 (중복 계산 방지)
         draw_info = []
         for bbox, label in zip(boxes, labels):
-            if box_format == 'xywh':
-                x, y, box_w, box_h = bbox.astype(int)
-                x1, y1, x2, y2 = x, y, x + box_w, y + box_h
-            else: # xyxy
-                x1, y1, x2, y2 = bbox.astype(int)
-            
-            r, g, b = self.colors[label % len(self.colors)]
-            hls = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
-            lightness = min(1.0, hls[1] * 1.3)
-            new_rgb = colorsys.hls_to_rgb(hls[0], lightness, hls[2])
+            if box_format == 'xywh': x, y, box_w, box_h = bbox.astype(int); x1, y1, x2, y2 = x, y, x + box_w, y + box_h
+            else: x1, y1, x2, y2 = bbox.astype(int)
+            r, g, b = self.colors[label % len(self.colors)]; hls = colorsys.rgb_to_hls(r / 255., g / 255., b / 255.)
+            lightness = min(1.0, hls[1] * 1.3); new_rgb = colorsys.hls_to_rgb(hls[0], lightness, hls[2])
             gt_color = (int(new_rgb[0] * 255), int(new_rgb[1] * 255), int(new_rgb[2] * 255))
             label_text = f'{text_prefix}: {self.classes[label]}'
             draw_info.append({'coords': (x1, y1, x2, y2), 'color': gt_color, 'text': label_text})
-
-        # 2. 오버레이에 채워진 사각형 그리기
         for info in draw_info:
             x1, y1, x2, y2 = info['coords']
             for modality in target_modalities:
@@ -157,14 +143,9 @@ class SejongMultimodalVisualizer:
                 offset_y, offset_x = modality_offsets[modality]
                 x1_s, y1_s, x2_s, y2_s = x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y
                 cv2.rectangle(overlay, (x1_s, y1_s), (x2_s, y2_s), info['color'], -1)
-
         cv2.addWeighted(overlay, alpha, output_img, 1 - alpha, 0, output_img)
-
-        # 3. 합성된 이미지 위에 선명한 테두리와 텍스트 그리기
         for info in draw_info:
-            x1, y1, x2, y2 = info['coords']
-            gt_color = info['color']
-            label_text = info['text']
+            x1, y1, x2, y2 = info['coords']; gt_color = info['color']; label_text = info['text']
             for modality in target_modalities:
                 if modality not in modality_offsets: continue
                 offset_y, offset_x = modality_offsets[modality]
@@ -181,7 +162,7 @@ class SejongMultimodalVisualizer:
         for label, (x, y) in modality_labels.items():
             cv2.putText(concat_img, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
         return concat_img
-
+    
     @torch.no_grad()
     def visualize_from_validation_set(self, output_dir: str, num_samples: int, score_threshold: float,
                                       draw_on_modalities: List[str], eval_only: bool):
@@ -192,38 +173,36 @@ class SejongMultimodalVisualizer:
         
         val_dataset_cfg = self.cfg.val_dataloader.dataset
         dataset = DATASETS.build(val_dataset_cfg)
+        dataset.full_init()
         
-        # ✨ num_samples가 음수이면 전체 데이터셋 사용
+        coco_api = COCO(dataset.ann_file)
+        
         total_samples = len(dataset) if num_samples < 0 else min(num_samples, len(dataset))
 
         print(f"'{val_dataset_cfg.type}' 데이터셋에서 {len(dataset)}개의 샘플을 찾았습니다.")
-        if eval_only:
-            print(f"총 {total_samples}개의 샘플에 대해 평가(mAP 계산)만 진행합니다...")
-        else:
-            print(f"총 {total_samples}개의 샘플에 대해 시각화 및 평가를 진행합니다...")
+        if eval_only: print(f"총 {total_samples}개의 샘플에 대해 평가(mAP 계산)만 진행합니다...")
+        else: print(f"총 {total_samples}개의 샘플에 대해 시각화 및 평가를 진행합니다...")
 
         crop_box = [40, 110, 480, 480]
         print(f"모든 Bbox는 다음 영역으로 잘립니다: {crop_box}")
 
         self.model.eval()
-        all_predictions_for_eval = []
+        coco_predictions = []
+        processed_img_ids = []
+        cropped_gt_for_eval = {'images': [], 'annotations': [], 'categories': coco_api.dataset['categories']}
 
         for i, data in enumerate(dataset):
             if i >= total_samples: break
             
             original_data_sample = data['data_samples']
+            image_id = original_data_sample.img_id
+            processed_img_ids.append(image_id)
+
             batched_data = { 'inputs': [[item] for item in data['inputs']], 'data_samples': [original_data_sample] }
             processed_data = self.model.data_preprocessor(batched_data, training=False)
             predictions = self.model.forward(**processed_data, mode='predict')
             pred_sample = predictions[0]
-
             scale_factor = processed_data['data_samples'][0].metainfo['scale_factor']
-            gt_instances = original_data_sample.gt_instances
-            gt_boxes_wh = gt_instances.bboxes.cpu().numpy()
-            gt_labels = gt_instances.labels.cpu().numpy()
-            gt_boxes_xyxy = gt_boxes_wh.copy()
-            gt_boxes_xyxy[:, 2] += gt_boxes_xyxy[:, 0]
-            gt_boxes_xyxy[:, 3] += gt_boxes_xyxy[:, 1]
             
             pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
             pred_boxes_scaled = pred_instances.bboxes.cpu().numpy()
@@ -234,25 +213,38 @@ class SejongMultimodalVisualizer:
                 pred_boxes_xyxy = pred_boxes_scaled / rescale_factor
             else:
                 pred_boxes_xyxy = np.empty((0, 4))
-
-            cropped_gt_boxes, cropped_gt_labels = self.crop_and_adjust_bboxes(gt_boxes_xyxy, gt_labels, crop_box)
-            cropped_pred_boxes, cropped_pred_labels, cropped_pred_scores = self.crop_and_adjust_bboxes(
-                pred_boxes_xyxy, pred_labels, crop_box, scores=pred_scores)
             
-            eval_pred_sample = DetDataSample()
-            eval_pred_sample.pred_instances = InstanceData(
-                bboxes=torch.from_numpy(cropped_pred_boxes),
-                labels=torch.from_numpy(cropped_pred_labels),
-                scores=torch.from_numpy(cropped_pred_scores))
-            eval_pred_sample.gt_instances = InstanceData(
-                bboxes=torch.from_numpy(cropped_gt_boxes),
-                labels=torch.from_numpy(cropped_gt_labels))
-            all_predictions_for_eval.append(eval_pred_sample)
+            for box, label, score in zip(pred_boxes_xyxy, pred_labels, pred_scores):
+                x1, y1, x2, y2 = box
+                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                if crop_box[0] <= cx < crop_box[2] and crop_box[1] <= cy < crop_box[3]:
+                    w = x2 - x1; h = y2 - y1
+                    category_id = dataset.cat_ids[label]
+                    coco_predictions.append({'image_id': image_id, 'category_id': category_id, 'bbox': [x1, y1, w, h], 'score': float(score)})
 
+            # ✨ 핵심 수정: GT 유무와 상관없이, 처리하는 모든 이미지 정보를 먼저 추가합니다.
+            cropped_gt_for_eval['images'].append(coco_api.loadImgs([image_id])[0])
+
+            original_anns = coco_api.loadAnns(coco_api.getAnnIds(imgIds=[image_id]))
+            for ann in original_anns:
+                bbox = ann['bbox']
+                x1, y1, w, h = bbox; cx, cy = x1 + w / 2, y1 + h / 2
+                if crop_box[0] <= cx < crop_box[2] and crop_box[1] <= cy < crop_box[3]:
+                    cropped_gt_for_eval['annotations'].append(ann)
             if not eval_only:
+                gt_instances = original_data_sample.gt_instances
+                gt_boxes_wh = gt_instances.bboxes.cpu().numpy()
+                gt_labels = gt_instances.labels.cpu().numpy()
+                gt_boxes_xyxy = gt_boxes_wh.copy()
+                gt_boxes_xyxy[:, 2] += gt_boxes_xyxy[:, 0]; gt_boxes_xyxy[:, 3] += gt_boxes_xyxy[:, 1]
+                
+                vis_gt_boxes, vis_gt_labels = self.crop_and_adjust_bboxes(gt_boxes_xyxy, gt_labels, crop_box)
+                vis_pred_boxes, vis_pred_labels, _ = self.crop_and_adjust_bboxes(
+                    pred_boxes_xyxy, pred_labels, crop_box, scores=pred_scores)
+
                 rgb_img_path = original_data_sample.img_path[0]
                 img_id = Path(rgb_img_path).stem
-                print(f"[{i+1}/{total_samples}] 시각화 처리 중: {img_id}")
+                print(f"[{i+1}/{total_samples}] Visualizing: {img_id}")
 
                 images = self.load_multimodal_images(rgb_img_path)
                 if not images: continue
@@ -267,62 +259,79 @@ class SejongMultimodalVisualizer:
                 
                 concat_img, img_shape = self.create_multimodal_concat(cropped_images)
                 
-                result_img = self.draw_boxes(concat_img.copy(), cropped_pred_boxes, cropped_pred_labels, img_shape, 
+                result_img = self.draw_boxes(concat_img.copy(), vis_pred_boxes, vis_pred_labels, img_shape, 
                                              text_prefix="Pred", box_format='xyxy', draw_on=draw_on_modalities)
                 result_img = self.add_modality_labels(result_img, img_shape)
                 output_path_wogt = os.path.join(output_dir, 'wo_gt', f'{img_id}.jpg')
                 cv2.imwrite(output_path_wogt, cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR))
                 
-                # ✨ 불필요한 xywh 변환 제거
-                result_img_w_gt = self.draw_translucent_boxes(result_img, cropped_gt_boxes, cropped_gt_labels, img_shape, 
+                result_img_w_gt = self.draw_translucent_boxes(result_img, vis_gt_boxes, vis_gt_labels, img_shape, 
                                                               text_prefix="GT", box_format='xyxy', 
                                                               draw_on=draw_on_modalities, alpha=0.5)
                 output_path_wgt = os.path.join(output_dir, 'w_gt', f'{img_id}.jpg')
                 cv2.imwrite(output_path_wgt, cv2.cvtColor(result_img_w_gt, cv2.COLOR_RGB2BGR))
             else:
                 if (i + 1) % 100 == 0 or (i + 1) == total_samples:
-                    print(f"[{i+1}/{total_samples}] 평가 처리 중...")
+                    print(f"[{i+1}/{total_samples}] Processing for evaluation...")
         
-        # ✅ 버그 수정: 루프 밖으로 이동
+        
         if not eval_only:
             print(f"\n시각화 완료! 결과는 '{output_dir}' 폴더에 저장되었습니다.")
         
-        if all_predictions_for_eval:
-            print(f"\nCrop된 Bbox 기준, {len(all_predictions_for_eval)}개 샘플에 대한 평가(mAP)를 시작합니다...")
-            evaluator_cfg = self.cfg.val_evaluator
-            evaluator = METRICS.build(evaluator_cfg)
-            evaluator.dataset_meta = dataset.metainfo
-            eval_metrics = evaluator.evaluate([p.to_dict() for p in all_predictions_for_eval])
+        print(f"\nCrop된 영역 내 Bbox 기준, {total_samples}개 샘플에 대한 평가(mAP)를 시작합니다...")
+        if not coco_predictions:
+            print("평가할 예측 결과가 없습니다."); return
 
-            print("\n---*--- 평가 결과 (Cropped) ---*---")
-            for key, value in eval_metrics.items():
-                if isinstance(value, np.float32): eval_metrics[key] = round(float(value), 4)
-                print(f"{key:<25}: {eval_metrics[key]}")
-            print("---*---------------------------*---")
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json') as tmp_gt_file:
+            json.dump(cropped_gt_for_eval, tmp_gt_file)
+            tmp_gt_file.flush()
+            coco_gt = COCO(tmp_gt_file.name)
 
-            if wandb.run:
-                wandb_metrics = {f'eval_cropped/{k}': v for k, v in eval_metrics.items()}
-                wandb.log(wandb_metrics)
-                print("\nCrop 기준 평가 지표를 wandb에 성공적으로 로깅했습니다.")
-        else:
-            print("\n평가할 예측 결과가 없습니다.")
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as tmp_pred_file:
+            json.dump(coco_predictions, tmp_pred_file)
+            tmp_pred_file.flush()
+            coco_dt = coco_gt.loadRes(tmp_pred_file.name)
+
+        coco_eval = COCOeval(coco_gt, coco_dt, iouType='bbox')
+        # coco_eval.params.imgIds = processed_img_ids # 이 라인은 coco_gt가 필터링되었으므로 더 이상 필요 없음
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        print("\n---*--- 평가 결과 (Cropped GT 기준) ---*---")
+        coco_eval.summarize()
+        
+        if wandb.run:
+            stats = coco_eval.stats
+            wandb_metrics = {
+                'eval_cropped/mAP': stats[0], 'eval_cropped/mAP_50': stats[1], 'eval_cropped/mAP_75': stats[2],
+                'eval_cropped/mAP_s': stats[3], 'eval_cropped/mAP_m': stats[4], 'eval_cropped/mAP_l': stats[5],
+            }
+            wandb.log(wandb_metrics)
+            print("\nCrop 기준 평가 지표를 wandb에 성공적으로 로깅했습니다.")
 
 def main():
+    # argparse 부분은 이전과 동일하므로 생략합니다.
     parser = argparse.ArgumentParser(description='Sejong Multimodal Detection Visualization and Evaluation with Cropping')
     parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnextp_b2_rcnn_multiscale_v2/yeon-sejong2504_cmnextp_rcnn_lr0.01_ep50_v2.py', help='모델 config 파일 경로')
     parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnextp_b2_rcnn_multiscale_v2/best_coco_bbox_mAP_epoch_30.pth', help='모델 weight 파일 경로')
-    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/cmnextp_inference_ep30_cropped', help='시각화 결과 저장 디렉토리')
-    parser.add_argument('--num-samples', type=int, default=-1, help='시각화 및 평가할 샘플 수 (-1이면 전체)')
+    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/cmnextp_inference_ep30_cropped2', help='시각화 결과 저장 디렉토리')
+    # parser.add_argument('--num-samples', type=int, default=7796, help='시각화 및 평가할 샘플 수')
+    parser.add_argument('--num-samples', type=int, default=200, help='시각화 및 평가할 샘플 수')
     parser.add_argument('--score-threshold', type=float, default=0.4, help='신뢰도 임계값')
     parser.add_argument('--device', default='cuda:0', help='사용할 디바이스')
     parser.add_argument('--draw-on', nargs='+', default=['rgb'], help='박스를 그릴 모달리티 지정 (e.g., rgb depth event lidar). 기본값: rgb')
-    parser.add_argument('--eval-only', action='store_true', help='이미지 저장을 생략하고 mAP 평가만 수행합니다.')
+    parser.add_argument(
+        '--eval-only', 
+        action='store_true',  # 이 플래그가 있으면 True가 됨
+        help='이미지 저장을 생략하고 mAP 평가만 수행합니다.'
+    )
     args = parser.parse_args()
     
     run_mode = 'eval_only' if args.eval_only else 'visualize'
     wandb.init(project='DELIVER', name=f'{run_mode}_cropped_{Path(args.checkpoint).stem}', tags=['inference', run_mode, 'cmnext', 'cropped'], config=vars(args))
     
     visualizer = SejongMultimodalVisualizer(config_path=args.config, checkpoint_path=args.checkpoint, device=args.device)
+    
+    # ▼▼▼ eval_only 인자 전달 ▼▼▼
     visualizer.visualize_from_validation_set(
         output_dir=args.output_dir, 
         num_samples=args.num_samples, 
