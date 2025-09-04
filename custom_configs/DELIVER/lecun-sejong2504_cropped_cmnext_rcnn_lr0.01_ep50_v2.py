@@ -263,7 +263,7 @@ default_hooks = dict(
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(
         type='CheckpointHook', 
-        interval=10,
+        interval=5,
         save_best='auto',
         max_keep_ckpts=3
     ),
