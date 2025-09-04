@@ -149,4 +149,139 @@ class RGBDetectorVisualizer:
         self.model.eval()
         all_predictions_for_eval = []
 
-        for i, data
+        for i, data in enumerate(dataset):
+            if i >= total_samples: break
+            
+            original_data_sample = data['data_samples']
+            batched_data = { 'inputs': data['inputs'], 'data_samples': [original_data_sample] }
+            processed_data = self.model.data_preprocessor(batched_data, training=False)
+            predictions = self.model.forward(**processed_data, mode='predict')
+            pred_sample = predictions[0]
+
+            scale_factor = processed_data['data_samples'][0].metainfo['scale_factor']
+            gt_instances = original_data_sample.gt_instances
+            gt_boxes_wh = gt_instances.bboxes.cpu().numpy()
+            gt_labels = gt_instances.labels.cpu().numpy()
+            gt_boxes_xyxy = gt_boxes_wh.copy()
+            gt_boxes_xyxy[:, 2] += gt_boxes_xyxy[:, 0]
+            gt_boxes_xyxy[:, 3] += gt_boxes_xyxy[:, 1]
+            
+            pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
+            pred_boxes_scaled = pred_instances.bboxes.cpu().numpy()
+            pred_labels = pred_instances.labels.cpu().numpy()
+            pred_scores = pred_instances.scores.cpu().numpy()
+            if pred_boxes_scaled.shape[0] > 0:
+                rescale_factor = np.tile(scale_factor, 2)
+                pred_boxes_xyxy = pred_boxes_scaled / rescale_factor
+            else:
+                pred_boxes_xyxy = np.empty((0, 4))
+
+            if use_crop:
+                cropped_gt_boxes, cropped_gt_labels = self.crop_and_adjust_bboxes(gt_boxes_xyxy, gt_labels, crop_box)
+                cropped_pred_boxes, cropped_pred_labels, cropped_pred_scores = self.crop_and_adjust_bboxes(
+                    pred_boxes_xyxy, pred_labels, crop_box, scores=pred_scores)
+            else:
+                cropped_gt_boxes, cropped_gt_labels = gt_boxes_xyxy, gt_labels
+                cropped_pred_boxes, cropped_pred_labels, cropped_pred_scores = pred_boxes_xyxy, pred_labels, pred_scores
+
+            eval_pred_sample = DetDataSample()
+            eval_pred_sample.pred_instances = InstanceData(
+                bboxes=torch.from_numpy(cropped_pred_boxes),
+                labels=torch.from_numpy(cropped_pred_labels),
+                scores=torch.from_numpy(cropped_pred_scores))
+            eval_pred_sample.gt_instances = InstanceData(
+                bboxes=torch.from_numpy(cropped_gt_boxes),
+                labels=torch.from_numpy(cropped_gt_labels))
+            all_predictions_for_eval.append(eval_pred_sample)
+
+            if not eval_only:
+                rgb_img_path = original_data_sample.img_path
+                img_id = Path(rgb_img_path).stem
+                print(f"[{i+1}/{total_samples}] 시각화 처리 중: {img_id}")
+
+                vis_image = cv2.imread(rgb_img_path)
+                if use_crop:
+                    cr_x1, cr_y1, cr_x2, cr_y2 = crop_box
+                    vis_image = vis_image[cr_y1:cr_y2, cr_x1:cr_x2]
+
+                result_img = self.draw_boxes(vis_image, cropped_pred_boxes, cropped_pred_labels, "Pred", 'xyxy')
+                output_path_wogt = os.path.join(output_dir, 'wo_gt', f'{img_id}.jpg')
+                cv2.imwrite(output_path_wogt, result_img)
+                
+                # ✨ 불필요한 xywh 변환 제거
+                result_img_w_gt = self.draw_translucent_boxes(result_img, cropped_gt_boxes, cropped_gt_labels,
+                                                              "GT", 'xyxy', alpha=0.5)
+                output_path_wgt = os.path.join(output_dir, 'w_gt', f'{img_id}.jpg')
+                cv2.imwrite(output_path_wgt, result_img_w_gt)
+            else:
+                if (i + 1) % 100 == 0 or (i + 1) == total_samples:
+                    print(f"[{i+1}/{total_samples}] 평가 처리 중...")
+
+        if not eval_only:
+            print(f"\n시각화 완료! 결과는 '{output_dir}' 폴더에 저장되었습니다.")
+        
+        if all_predictions_for_eval:
+            eval_tag = "Cropped" if use_crop else "Full"
+            print(f"\n{eval_tag} 이미지 기준, {len(all_predictions_for_eval)}개 샘플에 대한 평가(mAP)를 시작합니다...")
+            
+            # ✨ AttributeError 해결
+            evaluator_cfg = self.cfg.val_evaluator
+            evaluator = METRICS.build(evaluator_cfg)
+            evaluator.dataset_meta = dataset.metainfo
+            eval_metrics = evaluator.evaluate([p.to_dict() for p in all_predictions_for_eval])
+
+            print(f"\n---*--- 평가 결과 ({eval_tag}) ---*---")
+            for key, value in eval_metrics.items():
+                if isinstance(value, np.float32): eval_metrics[key] = round(float(value), 4)
+                print(f"{key:<25}: {value}")
+            print("---*---------------------------*---")
+
+            if wandb.run:
+                wandb_metrics = {f'eval_{eval_tag.lower()}/{k}': v for k, v in eval_metrics.items()}
+                wandb.log(wandb_metrics)
+                print(f"\n{eval_tag} 기준 평가 지표를 wandb에 성공적으로 로깅했습니다.")
+        else:
+            print("\n평가할 예측 결과가 없습니다.")
+
+def main():
+    parser = argparse.ArgumentParser(description='RGB CocoDataset Detection Visualization and Evaluation')
+    parser.add_argument('--config', default='custom_configs/DELIVER/lecun-sejong2504_cmnext_rcnn_v2.py', help='모델 config 파일 경로')
+    parser.add_argument('--checkpoint', default='work_dirs/sejong2504_faster_rcnn__v2/best_coco_bbox_mAP_epoch_40.pth', help='모델 weight 파일 경로')
+    parser.add_argument('--output-dir', default='outputs/rgb_inference_results', help='시각화 결과 저장 디렉토리')
+    parser.add_argument('--num-samples', type=int, default=-1, help='시각화 및 평가할 샘플 수 (-1이면 전체)')
+    parser.add_argument('--score-threshold', type=float, default=0.3, help='신뢰도 임계값')
+    parser.add_argument('--device', default='cuda:0', help='사용할 디바이스')
+    parser.add_argument('--no-crop', action='store_true', help='이미지와 Bbox를 Crop하지 않음')
+    # ✨ --eval-only 인자 추가
+    parser.add_argument('--eval-only', action='store_true', help='이미지 저장을 생략하고 mAP 평가만 수행합니다.')
+    
+    args = parser.parse_args()
+    
+    # ✨ wandb 실행 이름 및 태그에 모드 반영
+    run_mode = 'eval_only' if args.eval_only else 'visualize'
+    crop_mode = 'full' if args.no_crop else 'cropped'
+    wandb_run_name = f'{run_mode}_{crop_mode}_{Path(args.checkpoint).stem}'
+    wandb.init(
+        project='DELIVER', 
+        name=wandb_run_name, 
+        tags=['inference', run_mode, 'evaluation', 'rgb_only', crop_mode], 
+        config=vars(args)
+    )
+    
+    visualizer = RGBDetectorVisualizer(
+        config_path=args.config,
+        checkpoint_path=args.checkpoint,
+        device=args.device
+    )
+    
+    visualizer.visualize_from_validation_set(
+        output_dir=args.output_dir,
+        num_samples=args.num_samples,
+        score_threshold=args.score_threshold,
+        use_crop=not args.no_crop,
+        eval_only=args.eval_only # ✨ 인자 전달
+    )
+    wandb.finish()
+
+if __name__ == '__main__':
+    main()
