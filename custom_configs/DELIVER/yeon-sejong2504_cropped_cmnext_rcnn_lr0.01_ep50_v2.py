@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
+data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -58,7 +58,6 @@ model = dict(
         frozen_stages=-1,
         # pretrained='/home/jovyan/SSDc/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
         pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
-        # pretrained='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
         type='FPN',
@@ -169,8 +168,8 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/train.json',
-        data_prefix=dict(img='images'),
+        ann_file=f'{data_root}labels/train_cropped3.json',
+        data_prefix=dict(img='images_cropped3'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -179,15 +178,15 @@ train_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=1,
-    num_workers=2,
+    num_workers=1,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/test.json',
-        data_prefix=dict(img='images'),
+        ann_file=f'{data_root}labels/test_cropped3.json',
+        data_prefix=dict(img='images_cropped3'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -198,7 +197,7 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'labels/test.json'),
+    ann_file=os.path.join(data_root, 'labels/test_cropped3.json'),
     metric='bbox')
 
 # Training schedule
