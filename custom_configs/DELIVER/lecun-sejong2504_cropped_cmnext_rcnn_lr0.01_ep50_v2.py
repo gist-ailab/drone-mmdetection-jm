@@ -5,7 +5,8 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped/'
+# data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/'
+data_root= '/SSDb/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -18,7 +19,7 @@ train_pipeline = [
         type='DELIVERResize',
         # 🔥 원본 비율(640x480)을 고려한 Multi-scale 학습. (H, W) 순서.
         #    모델이 다양한 크기의 객체를 학습하여 성능 향상에 도움이 됩니다.
-        img_scale=[(480, 640),  (640, 852)], # 4:3 비율 유지
+        img_scale=[(512, 384)], # 4:3 비율 유지
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -35,7 +36,7 @@ test_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(
         type='DELIVERResize',
-        img_scale=(480, 640), # 🔥 (H, W) 순서로 원본 비율 고정
+        img_scale=(512, 384), # 🔥 (H, W) 순서로 원본 비율 고정
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -57,7 +58,9 @@ model = dict(
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
         # pretrained='/home/jovyan/SSDc/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
-        pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        # pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        # pretrained='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
         type='FPN',
@@ -164,7 +167,7 @@ train_dataloader = dict(
     batch_size=3,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
-    sampler=dict(type='DefaultSampler', shuffle=True),
+    sampler=dict(type='DefaultSampler', shuffle=True),  
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
@@ -229,11 +232,10 @@ optim_wrapper = dict(
 )
 
 
-# # Hooks, Logger, Visualizer (기존 설정 유지)
-# default_hooks = _base_.default_hooks
-# log_processor = _base_.log_processor
-# vis_backends = _base_.vis_backends
-# visualizer = _base_.visualizer
+
+
+experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
+
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -241,8 +243,8 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
-            tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
+            name=f'{experiment_name}',
+            tags=['cmnext','cropped' 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
         ),
@@ -295,9 +297,5 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
-
-
-
 find_unused_parameters = True
