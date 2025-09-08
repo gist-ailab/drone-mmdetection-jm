@@ -121,12 +121,12 @@ class RGBInferenceVisualizer:
         
         total_samples = len(dataset) if num_samples < 0 else min(num_samples, len(dataset))
 
-        print(f"'{val_dataset_cfg.type}' 데이터셋에서 {len(dataset)}개의 샘플을 찾았습니다.")
-        print(f"총 {total_samples}개의 샘플에 대해 시각화 및 예측 저장을 진행합니다...")
+        print(f"'{val_dataset_cfg.type}' dataset contains {len(dataset)} samples.")
+        print(f"Processing {total_samples} samples for visualization and prediction saving...")
 
         crop_box = [40, 110, 480, 480] if use_vis_crop else None
         if crop_box:
-            print(f"모든 시각화 Bbox는 다음 영역으로 잘립니다: {crop_box}")
+            print(f"All visualization bboxes will be cropped to: {crop_box}")
 
         self.model.eval()
         coco_results = []
@@ -137,7 +137,6 @@ class RGBInferenceVisualizer:
             original_data_sample = data['data_samples']
             image_id = original_data_sample.img_id
             
-            # RGB 데이터셋은 inputs가 텐서 하나이므로 리스트로 감싸줍니다.
             batched_data = { 'inputs': [data['inputs']], 'data_samples': [original_data_sample] }
             processed_data = self.model.data_preprocessor(batched_data, training=False)
             predictions = self.model.forward(**processed_data, mode='predict')
@@ -146,11 +145,12 @@ class RGBInferenceVisualizer:
             scale_factor = processed_data['data_samples'][0].metainfo['scale_factor']
             pred_instances = pred_sample.pred_instances[pred_sample.pred_instances.scores > score_threshold]
             
-            # --- 1. 예측 결과를 COCO JSON 형식으로 저장 ---
+            # --- 1. Get predictions in original image coordinate space (xyxy) ---
             pred_boxes_xyxy = pred_instances.bboxes.cpu().numpy() / np.tile(scale_factor, 2)
             pred_labels = pred_instances.labels.cpu().numpy()
             pred_scores = pred_instances.scores.cpu().numpy()
 
+            # --- 2. Save predictions to COCO format list ---
             for box, label, score in zip(pred_boxes_xyxy, pred_labels, pred_scores):
                 x1, y1, x2, y2 = box
                 w, h = x2 - x1, y2 - y1
@@ -161,63 +161,66 @@ class RGBInferenceVisualizer:
                     'score': float(score)
                 })
             
-            # --- 2. 시각화 수행 ---
+            # --- 3. Prepare for visualization ---
             img_path = original_data_sample.img_path
             img_id_str = Path(img_path).stem
-            print(f"[{i+1}/{total_samples}] 처리 중: {img_id_str}")
+            print(f"[{i+1}/{total_samples}] Processing: {img_id_str}")
 
             vis_image = cv2.imread(img_path)
 
+            # Get original GT boxes (already in xyxy format)
+            gt_instances = original_data_sample.gt_instances
+            if 'bboxes' in gt_instances:
+                gt_boxes_xyxy = gt_instances.bboxes.cpu().numpy()
+                gt_labels = gt_instances.labels.cpu().numpy()
+            else:
+                gt_boxes_xyxy, gt_labels = np.empty((0, 4)), np.empty((0,))
+
             if use_vis_crop:
-                # 시각화용 GT/Prediction 생성 (Crop 및 좌표 변환)
-                gt_instances = original_data_sample.gt_instances
-                if 'bboxes' in gt_instances:
-                    gt_boxes_xyxy = gt_instances.bboxes.cpu().numpy()
-                    gt_boxes_xyxy[:, 2:] += gt_boxes_xyxy[:, :2]
-                    gt_labels = gt_instances.labels.cpu().numpy()
-                else:
-                    gt_boxes_xyxy, gt_labels = np.empty((0, 4)), np.empty((0,))
-                
+                # If cropping, transform both GT and Pred boxes for visualization
                 vis_gt_boxes, vis_gt_labels = self.crop_and_adjust_bboxes(gt_boxes_xyxy, gt_labels, crop_box)
                 vis_pred_boxes, vis_pred_labels, _ = self.crop_and_adjust_bboxes(
                     pred_boxes_xyxy, pred_labels, crop_box, scores=pred_scores)
                 
-                # 시각화할 이미지 자체를 Crop
+                # Crop the image itself for visualization
                 cr_x1, cr_y1, cr_x2, cr_y2 = crop_box
                 vis_image = vis_image[cr_y1:cr_y2, cr_x1:cr_x2]
             else:
-                # Crop 안 할 경우 원본 GT/Prediction 사용
-                gt_instances = original_data_sample.gt_instances
-                if 'bboxes' in gt_instances:
-                    vis_gt_boxes = gt_instances.bboxes.cpu().numpy() # xyxy 포맷
-                    vis_gt_labels = gt_instances.labels.cpu().numpy()
-                else:
-                    vis_gt_boxes, vis_gt_labels = np.empty((0, 4)), np.empty((0,))
+                # If not cropping, use original boxes for visualization
+                vis_gt_boxes, vis_gt_labels = gt_boxes_xyxy, gt_labels
                 vis_pred_boxes, vis_pred_labels = pred_boxes_xyxy, pred_labels
 
-            # Prediction 그리기
+            # Draw predictions
             result_img = self.draw_boxes(vis_image.copy(), vis_pred_boxes, vis_pred_labels, "Pred", 'xyxy')
             cv2.imwrite(os.path.join(output_dir, 'wo_gt', f'{img_id_str}.jpg'), result_img)
             
-            # GT 그리기
+            # Draw ground truth
             result_img_w_gt = self.draw_translucent_boxes(result_img, vis_gt_boxes, vis_gt_labels, "GT", 'xyxy', alpha=0.5)
             cv2.imwrite(os.path.join(output_dir, 'w_gt', f'{img_id_str}.jpg'), result_img_w_gt)
 
-        print(f"\n총 {len(coco_results)}개의 예측 결과를 '{output_json_path}' 파일에 저장합니다.")
+        print(f"\nSaved {len(coco_results)} predictions to '{output_json_path}'.")
         with open(output_json_path, 'w') as f:
             json.dump(coco_results, f, indent=4)
         
-        print("\n시각화 및 예측 저장이 완료되었습니다.")
+        print("\nVisualization and prediction saving complete.")
 
 def main():
     parser = argparse.ArgumentParser(description='RGB CocoDataset Visualization and Prediction Saving')
-    parser.add_argument('--config', help='Model config file path')
-    parser.add_argument('--checkpoint', help='Model checkpoint file path')
-    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/fasterrcnn_inference_cropped', help='Directory to save visualization results')
+    parser.add_argument(
+        '--config', 
+        default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_faster_rcnn__v2/hinton-sejong2504_faster_rcnn_lr0.01_ep50_v2.py',
+        help='Model config file path'
+    )
+    parser.add_argument(
+        '--checkpoint',
+        default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_faster_rcnn__v2/epoch_20.pth',
+        help='Model checkpoint file path'
+    )
+    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/fasterrcnn_inference_cropped3', help='Directory to save visualization results')
     parser.add_argument('--num-samples', type=int, default=-1, help='Number of samples to process (-1 for all)')
     parser.add_argument('--score-threshold', type=float, default=0.5, help='Score threshold for visualization and saving')
     parser.add_argument('--device', default='cuda:0', help='Device to use')
-    parser.add_argument('--output-json', default='coco_predictions.json', help='Path to save the COCO format prediction JSON file')
+    parser.add_argument('--output-json', default='fasterrcnn_coco_predictions.json', help='Path to save the COCO format prediction JSON file')
     parser.add_argument('--no-vis-crop', action='store_true', help='Disable visual cropping of the output images')
     
     args = parser.parse_args()
