@@ -70,7 +70,7 @@ def visualize(coco_path: str, data_root: str):
         # 'file_name'은 일반적으로 'group_rgb/group_XX/frame_YYY.png'와 같은 형태
         # 이 경로를 기준으로 다른 모달리티 경로를 생성
         relative_rgb_path = img_info['file_name']
-        rgb_path = os.path.join(data_root, 'images', relative_rgb_path)
+        rgb_path = os.path.join(data_root, '', relative_rgb_path)
         
         # 2. 모든 모달리티 이미지 경로 구성
         modality_paths = {
@@ -137,12 +137,11 @@ def visualize(coco_path: str, data_root: str):
 def main():
     parser = argparse.ArgumentParser(description="Visualize Sejong Multimodal Dataset Ground Truth")
     parser.add_argument('--coco_path', 
-                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/labels/test.json',
+                        default='/media/ailab/SSD2/Workspace/dst/drone_250312_sejong_multimodal_coco_cropped/labels/train_cropped3.json',
                         help='Path to the COCO format annotation file (.json)')
     parser.add_argument('--data_root', 
-                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco/',
+                        default='/media/ailab/SSD2/Workspace/dst/drone_250312_sejong_multimodal_coco_cropped/images_cropped3',
                         help='Root directory of the dataset containing the "images" folder')
-    
     args = parser.parse_args()
     
     visualize(args.coco_path, args.data_root)
