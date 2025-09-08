@@ -7,10 +7,10 @@ _base_ = [
 ]
 
 # Dataset basic info
-dataset_type = 'SejongDetectionDataset'
+dataset_type = 'DELIVERDetectionDataset'
 data_root = '/media/jemo/HDD1/Workspace/dset/DELIVER/'  # Added trailing slash
 backend_args = None
-classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
+classes = ('Vehicle', 'Human')
 
 # Data preprocessor
 data_preprocessor = dict(

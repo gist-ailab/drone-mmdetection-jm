@@ -5,7 +5,7 @@ _base_ = [
     './deliver_dataset.py'  # Inherit dataset config
 ]
 
-data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped/'
+data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped_2/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 custom_imports = dict(imports=['mcdet.models.backbones'], allow_failed_imports=False)
