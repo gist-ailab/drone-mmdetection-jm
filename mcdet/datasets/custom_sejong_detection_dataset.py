@@ -174,9 +174,9 @@ class SejongDetectionDataset(CocoDataset):
             instances.append(instance)
             valid_instances += 1
         
-        # 빈 샘플 처리
-        if valid_instances == 0:
-            print(f"Warning: No valid instances for {img_info['file_name']}, creating dummy instance")
+        # # 빈 샘플 처리
+        # if valid_instances == 0:
+        #     print(f"Warning: No valid instances for {img_info['file_name']}, creating dummy instance")
 
         
         data_info['instances'] = instances

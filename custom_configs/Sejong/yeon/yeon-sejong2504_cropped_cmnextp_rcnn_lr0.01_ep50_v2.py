@@ -1,8 +1,8 @@
-# custom_configs/Sejong/lecun/lecun-sejong2504_cropped_cmnextp_rcnn_lr0.01_ep50_v2.py
+# custom_configs/Sejong/yeon/yeon-sejong2504_cropped_cmnextp_rcnn_lr0.01_ep50_v2.py
 
 import os
 _base_ = [
-    './deliver_dataset.py'  # Inherit dataset config
+    './sejong_dataset.py'  # Inherit dataset config
 ]
 
 data_root= '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_multimodal_coco_cropped_2/'
@@ -12,7 +12,11 @@ custom_imports = dict(imports=['mcdet.models.backbones'], allow_failed_imports=F
 
 train_pipeline = [
     dict(type='LoadDELIVERImages'),
-    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='LoadAnnotations', with_bbox=True, with_label=True),
+    dict(type='FilterAnnotations', 
+         min_gt_bbox_wh=(8.0, 8.0),    # 8x8 픽셀 최소 크기만 지정
+         keep_empty=False),            # 빈 샘플 제거
+
     dict(
         type='DELIVERResize',
 
@@ -49,12 +53,12 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextPBackbone',
+        type='CMNeXtPBackbone',
         backbone='CMNeXtP-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
         type='FPN',
@@ -158,7 +162,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=3,
+    batch_size=2,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),  
@@ -167,7 +171,11 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/train_cropped3.json',
         data_prefix=dict(img='images_cropped3'),
-        filter_cfg=dict(filter_empty_gt=True, min_size=5),
+        filter_cfg=dict(filter_empty_gt=True, 
+                        min_size=8,
+                        min_box_size = 32,
+                        filter_zero_area = True,
+                        filter_invalid_polygons=True),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
     ),
