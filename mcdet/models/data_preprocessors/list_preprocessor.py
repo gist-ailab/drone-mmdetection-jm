@@ -331,41 +331,33 @@ class ListDataPreprocessor(ImgDataPreprocessor):
         # 2. Check and fix invalid boxes (x2 <= x1 or y2 <= y1)
         invalid_width_mask = (bboxes[:, 2] <= bboxes[:, 0])
         invalid_height_mask = (bboxes[:, 3] <= bboxes[:, 1])
-        
         if invalid_width_mask.any() or invalid_height_mask.any():
-            print(f"Warning: Invalid bbox dimensions found in sample {sample_idx}")
-            print(f"  Original bboxes: {original_bboxes[invalid_width_mask | invalid_height_mask]}")
-            
-            # Option 1: Fix by adding minimum size
+            # print(f"Warning: Invalid bbox dimensions found in sample {sample_idx}")
+            # print(f"  Original bboxes: {original_bboxes[invalid_width_mask | invalid_height_mask]}")
             min_size = 1.0
             # Fix width (x2 <= x1)
             if invalid_width_mask.any():
                 bboxes[invalid_width_mask, 2] = bboxes[invalid_width_mask, 0] + min_size
-            
             # Fix height (y2 <= y1) 
             if invalid_height_mask.any():
-                bboxes[invalid_height_mask, 3] = bboxes[invalid_height_mask, 1] + min_size
-                
-            print(f"  Fixed bboxes: {bboxes[invalid_width_mask | invalid_height_mask]}")
+                bboxes[invalid_height_mask, 3] = bboxes[invalid_height_mask, 1] + min_size                
+            # print(f"  Fixed bboxes: {bboxes[invalid_width_mask | invalid_height_mask]}")
         
         # 3. Check image boundaries and clip if needed
         if hasattr(data_sample, 'metainfo') and data_sample.metainfo:
             img_shape = data_sample.metainfo.get('img_shape', None)
             if img_shape:
                 img_h, img_w = img_shape[:2]
-                
+
                 # Clip coordinates to image boundaries
                 bboxes[:, [0, 2]] = torch.clamp(bboxes[:, [0, 2]], min=0, max=img_w)  # x coords
                 bboxes[:, [1, 3]] = torch.clamp(bboxes[:, [1, 3]], min=0, max=img_h)  # y coords
-                
                 # Check if clipping made boxes invalid again
                 width_after_clip = bboxes[:, 2] - bboxes[:, 0]
                 height_after_clip = bboxes[:, 3] - bboxes[:, 1]
-                
                 too_small_mask = (width_after_clip <= 0) | (height_after_clip <= 0)
                 if too_small_mask.any():
                     print(f"Warning: Some bboxes became too small after clipping in sample {sample_idx}")
-                
         return bboxes
 
     def _safe_filter_instances(self, gt_instances, valid_mask, sample_idx: int):

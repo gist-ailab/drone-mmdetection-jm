@@ -587,7 +587,7 @@ class DELIVERRandomChoice(BaseTransform):
         return repr_str
     
     
-    
+@TRANSFORMS.register_module()
 class DELIVERRandomMasking(BaseTransform):
     '''Random mask for specific modality'''
     def __init__(self,
@@ -629,7 +629,7 @@ class DELIVERRandomMasking(BaseTransform):
             transformed_results['img'][self.masking_index[idx]] = img
         return transformed_results
     
-    
+@TRANSFORMS.register_module() 
 class DELIVERModalityDropout(BaseTransform):
     """Randomly drop (zero out) one or more modalities during training.
 
