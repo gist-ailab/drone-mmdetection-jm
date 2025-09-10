@@ -666,8 +666,9 @@ class CMNeXt(nn.Module):
                 FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
                 FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
 
+
     def tokenselect(self, x_ext, module):    
-        x_scores = module(x_ext)                            #score 에서 token을 선택
+        x_scores = module(x_ext)                            #score 에서 token을 선택        
         for i in range(len(x_ext)):
             x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
         stacked_x_ext = torch.stack(x_ext, dim=1) 
