@@ -999,7 +999,7 @@ def save_channel_winners(
     if winner_indices.dim() == 4:
         winner_indices = winner_indices[batch_idx]
     
-    indices_np = winner_indices.detach().cpu().numpy()
+    indices_np = winner_indices.detach().cpu().long().numpy()
     C, H, W = indices_np.shape
 
     # 그리드 크기 계산 (예: 64채널 -> 8x8)
