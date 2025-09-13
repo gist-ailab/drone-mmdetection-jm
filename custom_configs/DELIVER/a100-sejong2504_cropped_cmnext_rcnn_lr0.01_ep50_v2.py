@@ -13,12 +13,10 @@ classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'A
 # -----------------------------------------------------------------
 train_pipeline = [
     dict(type='LoadDELIVERImages'),
-    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='LoadAnnotations', with_bbox=True, with_label=True),
     dict(
         type='DELIVERResize',
-        # 🔥 원본 비율(640x480)을 고려한 Multi-scale 학습. (H, W) 순서.
-        #    모델이 다양한 크기의 객체를 학습하여 성능 향상에 도움이 됩니다.
-        img_scale=[(640,480)], # 4:3 비율 유지
+        img_scale=[(512, 384)], # 4:3 비율 유지
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -35,7 +33,7 @@ test_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(
         type='DELIVERResize',
-        img_scale=(640, 480), # 🔥 (H, W) 순서로 원본 비율 고정
+        img_scale=(512, 384), # 🔥 (H, W) 순서로 원본 비율 고정
         keep_ratio=True,
         bbox_format='xywh'
     ),
@@ -161,8 +159,8 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=3,
-    num_workers=4, # 🔥 워커 수 상향 조정
+    batch_size=2,
+    num_workers=1, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -187,7 +185,8 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file=f'{data_root}labels/test_cropped3.json',
         data_prefix=dict(img='images_cropped3'),
-        filter_cfg=dict(filter_empty_gt=True, min_size=5),
+        # filter_cfg=dict(filter_empty_gt=True, min_size=5),
+        filter_cfg=dict(filter_empty_gt=True),
         test_mode=True,
         pipeline=test_pipeline,
         metainfo=dict(classes=classes)
@@ -214,18 +213,24 @@ param_scheduler = [
         end=500),
     dict(
         type='CosineAnnealingLR',
-        T_max=50, # 🔥 전체 epoch 수와 일치
-        by_epoch=True,
-        begin=0, # 🔥 Warmup 직후부터 시작
-        end=50,
+        by_epoch=False,
+        begin=500,
+        end=103300,
+        T_max=102800, # end - begin
         eta_min=1e-6)
 ]
 
+# optim_wrapper = dict(
+#     type='OptimWrapper',
+#     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+#     clip_grad=dict(max_norm=5, norm_type=2),
+#     accumulative_counts=8
+# )
 optim_wrapper = dict(
-    type='OptimWrapper',
+    type='AmpOptimWrapper',  # ◀ OptimWrapper를 AmpOptimWrapper로 변경
     optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
     clip_grad=dict(max_norm=5, norm_type=2),
-    accumulative_counts=4
+    accumulative_counts=8 # 그래디언트 누적은 그대로 유지
 )
 
 experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
@@ -293,5 +298,3 @@ visualizer = dict(
 work_dir = f'./work_dirs/{experiment_name}'
 
 
-
-find_unused_parameters = True
