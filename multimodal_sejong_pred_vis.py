@@ -234,9 +234,9 @@ class SejongMultimodalVisualizer:
 
 def main():
     parser = argparse.ArgumentParser(description='Sejong Multimodal Detection Visualization and Prediction Saving')
-    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Sejong/lecun/lecun-sejong2504_cropped_cmnext_rcnn_lr0.01_ep50_v2.py', help='Model config file path')
-    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2/epoch_5.pth', help='Model checkpoint file path')
-    parser.add_argument('--output-dir', default='outputs/multimodal_results', help='Directory to save visualization results')
+    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnextp_b2_rcnn_multiscale_v2/yeon-sejong2504_cmnextp_rcnn_lr0.01_ep50_v2.py', help='Model config file path')
+    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/work_dirs/sejong2504_cmnextp_b2_rcnn_multiscale_v2/best_coco_bbox_mAP_epoch_30.pth', help='Model checkpoint file path')
+    parser.add_argument('--output-dir', default='/ailab_mat2/dataset/drone/250312_sejong/INFERENCE/cmnextp_sejong_0910', help='Directory to save visualization results')
     parser.add_argument('--num-samples', type=int, default=-1, help='Number of samples to process (-1 for all)')
     parser.add_argument('--score-threshold', type=float, default=0.5, help='Score threshold for visualization and saving')
     parser.add_argument('--device', default='cuda:0', help='Device to use')
