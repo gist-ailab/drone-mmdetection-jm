@@ -130,3 +130,5 @@ multimodal_inference_with_gt/
 wandb_img_FFM.png
 wandb_img_FRM.png
 wandb_img_PPx.png
+wandb/
+outputs/

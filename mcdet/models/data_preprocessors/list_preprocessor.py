@@ -551,8 +551,8 @@ class ListDataPreprocessor(ImgDataPreprocessor):
         if data_samples:
             self._move_gt_to_device(data_samples, self.device)
             self._update_data_sample_metainfo(data_samples, _padded_inputs)
-                    
-        # Return processed data
+            
+
         return {
             'inputs': _padded_inputs,
             'data_samples': data_samples

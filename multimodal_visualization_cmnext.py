@@ -259,9 +259,9 @@ class SejongMultimodalVisualizer:
 def main():
     # ... (main 함수는 변경 없음) ...
     parser = argparse.ArgumentParser(description='Sejong Multimodal Detection Visualization based on Validation Set')
-    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/deliver_cmnext_b2_faster_rcnn_2x_cosinelr0.01_ep50/hinton-deliver_cmnext_rcnn_lr0.01_ep50.py', help='모델 config 파일 경로')
-    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/deliver_cmnext_b2_faster_rcnn_2x_cosinelr0.01_ep50/best_coco_bbox_mAP_epoch_45.pth', help='모델 weight 파일 경로')
-    parser.add_argument('--output-dir', default='/ailab_mat2/personal/jemo_maeng/dset/Drone/CMNeXT/inference/deliver_cmnext_b2_faster_rcnn_2x_cosinelr0.01_ep50', help='시각화 결과 저장 디렉토리')
+    parser.add_argument('--config', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Sejong/lecun/lecun-sejong2504_cropped_cmnext_rcnn_lr0.01_ep50_v2.py', help='모델 config 파일 경로')
+    parser.add_argument('--checkpoint', default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/work_dirs/sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2/epoch_5.pth', help='모델 weight 파일 경로')
+    parser.add_argument('--output-dir', default='/ailab_mat2/personal/jemo_maeng/dset/Drone/CMNeXT/inference/sejong_cmnextcriooed_b2_faster_rcnn_2x_cosinelr0.01_ep50', help='시각화 결과 저장 디렉토리')
     parser.add_argument('--num-samples', type=int, default=500, help='시각화할 샘플 수')
     parser.add_argument('--score-threshold', type=float, default=0.5, help='신뢰도 임계값')
     parser.add_argument('--device', default='cuda:0', help='사용할 디바이스')

@@ -666,8 +666,9 @@ class CMNeXt(nn.Module):
                 FFM(dim=embed_dims[2], reduction=1, num_heads=num_heads[2], norm_layer=nn.BatchNorm2d),
                 FFM(dim=embed_dims[3], reduction=1, num_heads=num_heads[3], norm_layer=nn.BatchNorm2d)])
 
+
     def tokenselect(self, x_ext, module):    
-        x_scores = module(x_ext)                            #score 에서 token을 선택
+        x_scores = module(x_ext)                            #score 에서 token을 선택        
         for i in range(len(x_ext)):
             x_ext[i] = x_scores[i] * x_ext[i] + x_ext[i]
         stacked_x_ext = torch.stack(x_ext, dim=1) 
@@ -999,7 +1000,7 @@ def save_channel_winners(
     if winner_indices.dim() == 4:
         winner_indices = winner_indices[batch_idx]
     
-    indices_np = winner_indices.detach().cpu().numpy()
+    indices_np = winner_indices.detach().cpu().long().numpy()
     C, H, W = indices_np.shape
 
     # 그리드 크기 계산 (예: 64채널 -> 8x8)

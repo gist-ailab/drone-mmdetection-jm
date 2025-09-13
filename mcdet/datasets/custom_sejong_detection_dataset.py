@@ -26,16 +26,16 @@ METAINFO = {
         'Victim', 'Ally', 'Exit', 'Window', 'Light'
     ),
     'palette': [
-        (220, 20, 60),     # Enemy - Crimson
-        (0, 128, 0),       # LandingMarker - Green
-        (0, 0, 255),       # Obstacle - Blue
-        (255, 140, 0),     # FireExt - Dark Orange
-        (255, 215, 0),     # Door - Gold
-        (255, 0, 255),     # Victim - Magenta
-        (0, 255, 255),     # Ally - Cyan
-        (128, 0, 128),     # Exit - Purple
-        (70, 130, 180),    # Window - Steel Blue
-        (255, 255, 255)    # Light - White
+        (255, 0, 0),       # Enemy - Red (선명한 빨강)
+        (50, 205, 50),     # LandingMarker - Lime Green (선명한 초록)
+        (0, 0, 255),       # Obstacle - Blue (선명한 파랑)
+        (255, 165, 0),     # FireExt - Orange (주황)
+        (160, 32, 240),    # Door - Purple (보라)
+        (255, 105, 180),   # Victim - Hot Pink (핫핑크, 눈에 띄게)
+        (0, 255, 255),     # Ally - Cyan (청록)
+        (255, 255, 0),     # Exit - Yellow (노랑)
+        (139, 69, 19),     # Window - Saddle Brown (갈색)
+        (128, 128, 128)    # Light - Gray (회색, 흰색 대체)
     ]
 }
 
@@ -174,9 +174,9 @@ class SejongDetectionDataset(CocoDataset):
             instances.append(instance)
             valid_instances += 1
         
-        # 빈 샘플 처리
-        if valid_instances == 0:
-            print(f"Warning: No valid instances for {img_info['file_name']}, creating dummy instance")
+        # # 빈 샘플 처리
+        # if valid_instances == 0:
+        #     print(f"Warning: No valid instances for {img_info['file_name']}, creating dummy instance")
 
         
         data_info['instances'] = instances
