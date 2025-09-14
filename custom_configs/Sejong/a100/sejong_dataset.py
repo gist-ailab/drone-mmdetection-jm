@@ -2,8 +2,8 @@
 # custom_configs/DELIVER/deliver_dataset.py
 import os
 _base_ = [
-    '../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path
-    '../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  
+    '../../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path
+    '../../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  
 ]
 
 # Dataset basic info
