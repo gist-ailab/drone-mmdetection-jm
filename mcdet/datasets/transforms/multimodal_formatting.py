@@ -20,23 +20,7 @@ class PackDELIVERDetInputs:
                  )):
         self.meta_keys = meta_keys
     
-    # def _format_gt_instances(self, results: Dict) -> InstanceData:
-    #     """Format ground truth instances with proper tensor types."""
-    #     gt_instances = InstanceData()
-    #     if 'instances' in results:
-    #         bboxes = []
-    #         labels = []
-    #         for instance in results['instances']:
-    #             if 'bbox' in instance:
-    #                 bboxes.append(instance['bbox'])
-    #             if 'bbox_label' in instance:
-    #                 labels.append(instance['bbox_label'])
-    #         if bboxes:                          # Ensure bboxes are float32 tensors
-    #             gt_instances.bboxes = torch.tensor(bboxes, dtype=torch.float32)            
-    #         if labels:                  # Ensure labels are long tensors    
-    #             gt_instances.labels = torch.tensor(labels, dtype=torch.long)
-        
-    #     return gt_instances
+
     def _format_gt_instances(self, results: Dict) -> InstanceData:
         """
         [수정된 최종 버전]
