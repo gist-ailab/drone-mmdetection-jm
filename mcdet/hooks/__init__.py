@@ -2,7 +2,8 @@
 from .debug_hook import BboxLossDebugHook
 from .step_tracker_hook import StepTrackerHook
 from .vis_log_hook import VisLogHook
+from .cmnext_visualization_hook import CMNeXtVisualizationHook
 
 __all__ = [
-    'BboxLossDebugHook', 'StepTrackerHook', "VisLogHook"
+    'BboxLossDebugHook', 'StepTrackerHook', "VisLogHook", 'CMNeXtVisualizationHook'
 ]

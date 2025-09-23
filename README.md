@@ -462,6 +462,48 @@ This project is released under the [Apache 2.0 license](LICENSE).
 - [MMEval](https://github.com/open-mmlab/mmeval): A unified evaluation library for multiple machine learning libraries.
 - [Playground](https://github.com/open-mmlab/playground): A central hub for gathering and showcasing amazing projects built upon OpenMMLab.
 
+## CMNeXt Visualization Hook
+
+This project includes a specialized hook for visualizing CMNeXt/CMNeXtP multimodal models:
+
+### CMNeXtVisualizationHook
+
+The `CMNeXtVisualizationHook` provides comprehensive visualization and statistics for CMNeXt and CMNeXtP models, including:
+
+- **Modality Selection Statistics**: Tracks which modalities are being selected at each stage
+- **Soft Mix Visualization** (CMNeXtP): Shows attention weights for modality fusion
+- **Hard Selection Visualization** (CMNeXt): Shows winner indices for each channel
+- **Feature Map Visualization**: Displays PPX features, FRM inputs, and FFM outputs
+- **Wandb Integration**: Automatic logging to Weights & Biases
+
+### Usage
+
+Add the hook to your configuration:
+
+```python
+# In your config file
+custom_hooks = [
+    dict(
+        type='CMNeXtVisualizationHook',
+        log_interval=1000,
+        log_training=False,
+        log_validation=True,
+        save_images=True,
+        image_save_dir='./visualization_outputs'
+    )
+]
+```
+
+### Features
+
+- **Automatic Model Detection**: Automatically detects CMNeXt/CMNeXtP backbones
+- **Stage-wise Analysis**: Provides detailed analysis for each of the 4 stages
+- **Modality Contribution Maps**: Visualizes which modalities contribute most to each spatial location
+- **Channel Winner Maps**: Shows which modality "wins" for each feature channel
+- **Distributed Training Support**: Works with multi-GPU training setups
+
+See `example_cmnext_hook_usage.py` for a complete usage example.
+
 
 
 CUDA_VISIBLE_DEVICES=3,4,5,6,7 \

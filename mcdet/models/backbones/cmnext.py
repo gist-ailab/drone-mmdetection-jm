@@ -599,7 +599,6 @@ cmnext_settings = {
 class CMNeXt(nn.Module):
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         super().__init__()
-        self.iter = 0
         assert model_name in cmnext_settings.keys(), f"Model name should be in {list(cmnext_settings.keys())}"
         embed_dims, depths = cmnext_settings[model_name]
         extra_depths = depths 
@@ -696,38 +695,29 @@ class CMNeXt(nn.Module):
             x1_cam, x1_f = self.FRMs[0](x1_cam, x1_f_)
             x_fused = self.FFMs[0](x1_cam, x1_f)
             
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    import wandb
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage1_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-                    if self.iter % 1000 ==0:
-                            ppx_image = create_tensor_grid_image(
-                                x1_f_, title="Stage 1 - PPX Features")
-                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
-
-                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
-                            frm_image = create_tensor_grid_image(
-                                x1_cam, title="Stage 1 - FRM Input (RGB Features)")
-                            wandb.log({"val/stage1_FRM_input": wandb.Image(frm_image)})
-                            
-                            # FFM 최종 융합 피쳐맵 생성 및 로깅
-                            ffm_image = create_tensor_grid_image(
-                                x_fused, title="Stage 1 - Fused Features (FFM Output)")
-                            wandb.log({"val/stage1_FFM": wandb.Image(ffm_image)})
-
-                            # 승자 인덱스 맵 생성 및 로깅
-                            if winner_indices is not None:
-                                winner_map_image = create_channel_winners_image(
-                                    winner_indices=winner_indices,
-                                    modality_names=self.modals,
-                                    title='Stage 1 - Modality Winner per Channel'
-                                )
-                                wandb.log({"val/stage1_channel_winners": wandb.Image(winner_map_image)})
+            # Hook을 통한 시각화/통계 로깅
+            if hasattr(self, '_visualization_hook') and self._visualization_hook is not None:
+                if x_scores is not None and winner_indices is not None:
+                    # Hard Selection 통계 로깅 (CMNeXt)
+                    self._visualization_hook.log_hard_selection_stats(
+                        x_scores=x_scores,
+                        winner_indices=winner_indices,
+                        modality_names=self.modals,
+                        log_prefix="stage1",
+                        batch_idx=0
+                    )
+                
+                # Feature map 시각화
+                feature_maps = {
+                    'PPX_features': x1_f_,
+                    'FRM_input': x1_cam,
+                    'FFM_output': x_fused
+                }
+                self._visualization_hook.log_feature_maps(
+                    feature_maps=feature_maps,
+                    log_prefix="stage1",
+                    batch_idx=0
+                )
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x1_f for x_ in x_ext] if self.num_modals > 1 else [x1_f]
@@ -747,39 +737,30 @@ class CMNeXt(nn.Module):
             x2_f_ = self.extra_norm2(x_f)
             x2_cam, x2_f = self.FRMs[1](x2_cam, x2_f_)
             x_fused = self.FFMs[1](x2_cam, x2_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    import wandb
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage2_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-    
-                    if self.iter % 1000 ==0:
-                            ppx_image = create_tensor_grid_image(
-                                x1_f_, title="Stage 1 - PPX Features")
-                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
-
-                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
-                            frm_image = create_tensor_grid_image(
-                                x1_cam, title="Stage 2 - FRM Input (RGB Features)")
-                            wandb.log({"val/stage2_FRM_input": wandb.Image(frm_image)})
-                            
-                            # FFM 최종 융합 피쳐맵 생성 및 로깅
-                            ffm_image = create_tensor_grid_image(
-                                x_fused, title="Stage 2 - Fused Features (FFM Output)")
-                            wandb.log({"val/stage2_FFM": wandb.Image(ffm_image)})
-
-                            # 승자 인덱스 맵 생성 및 로깅
-                            if winner_indices is not None:
-                                winner_map_image = create_channel_winners_image(
-                                    winner_indices=winner_indices,
-                                    modality_names=self.modals,
-                                    title='Stage 2 - Modality Winner per Channel'
-                                )
-                                wandb.log({"val/stage2_channel_winners": wandb.Image(winner_map_image)})
+            
+            # Hook을 통한 시각화/통계 로깅
+            if hasattr(self, '_visualization_hook') and self._visualization_hook is not None:
+                if x_scores is not None and winner_indices is not None:
+                    # Hard Selection 통계 로깅 (CMNeXt)
+                    self._visualization_hook.log_hard_selection_stats(
+                        x_scores=x_scores,
+                        winner_indices=winner_indices,
+                        modality_names=self.modals,
+                        log_prefix="stage2",
+                        batch_idx=0
+                    )
+                
+                # Feature map 시각화
+                feature_maps = {
+                    'PPX_features': x2_f_,
+                    'FRM_input': x2_cam,
+                    'FFM_output': x_fused
+                }
+                self._visualization_hook.log_feature_maps(
+                    feature_maps=feature_maps,
+                    log_prefix="stage2",
+                    batch_idx=0
+                )
 
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x2_f for x_ in x_ext] if self.num_modals > 1 else [x2_f]
@@ -799,37 +780,30 @@ class CMNeXt(nn.Module):
             x3_f_ = self.extra_norm3(x_f)
             x3_cam, x3_f = self.FRMs[2](x3_cam, x3_f_)
             x_fused = self.FFMs[2](x3_cam, x3_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage3_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-                    if self.iter % 1000 ==0:
-                            ppx_image = create_tensor_grid_image(
-                                x1_f_, title="Stage 1 - PPX Features")
-                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
-
-                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
-                            frm_image = create_tensor_grid_image(
-                                x1_cam, title="Stage 3 - FRM Input (RGB Features)")
-                            wandb.log({"val/stage3_FRM_input": wandb.Image(frm_image)})
-                            
-                            # FFM 최종 융합 피쳐맵 생성 및 로깅
-                            ffm_image = create_tensor_grid_image(
-                                x_fused, title="Stage 3 - Fused Features (FFM Output)")
-                            wandb.log({"val/stage3_FFM": wandb.Image(ffm_image)})
-
-                            # 승자 인덱스 맵 생성 및 로깅
-                            if winner_indices is not None:
-                                winner_map_image = create_channel_winners_image(
-                                    winner_indices=winner_indices,
-                                    modality_names=self.modals,
-                                    title='Stage 3 - Modality Winner per Channel'
-                                )
-                                wandb.log({"val/stage3_channel_winners": wandb.Image(winner_map_image)})
+            
+            # Hook을 통한 시각화/통계 로깅
+            if hasattr(self, '_visualization_hook') and self._visualization_hook is not None:
+                if x_scores is not None and winner_indices is not None:
+                    # Hard Selection 통계 로깅 (CMNeXt)
+                    self._visualization_hook.log_hard_selection_stats(
+                        x_scores=x_scores,
+                        winner_indices=winner_indices,
+                        modality_names=self.modals,
+                        log_prefix="stage3",
+                        batch_idx=0
+                    )
+                
+                # Feature map 시각화
+                feature_maps = {
+                    'PPX_features': x3_f_,
+                    'FRM_input': x3_cam,
+                    'FFM_output': x_fused
+                }
+                self._visualization_hook.log_feature_maps(
+                    feature_maps=feature_maps,
+                    log_prefix="stage3",
+                    batch_idx=0
+                )
             outs.append(x_fused)
             x_ext = [x_.reshape(B, H, W, -1).permute(0, 3, 1, 2) + x3_f for x_ in x_ext] if self.num_modals > 1 else [x3_f]
         else:
@@ -849,314 +823,34 @@ class CMNeXt(nn.Module):
             x4_f_ = self.extra_norm4(x_f)
             x4_cam, x4_f = self.FRMs[3](x4_cam, x4_f_)
             x_fused = self.FFMs[3](x4_cam, x4_f)
-            if x_scores is not None and self.training is False:
-                rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else -1
-                if rank == 0 or rank == -1:
-                    a_dict = {}
-                    for i, modal in enumerate(modal_list):
-                        if i < len(x_scores):
-                            a_dict[f"rank_{rank}_stage4_score_{modal}"] = x_scores[i].mean().item()
-                    wandb.log(a_dict)
-                    if self.iter % 1000 ==0:
-                            ppx_image = create_tensor_grid_image(
-                                x1_f_, title="Stage 1 - PPX Features")
-                            wandb.log({"val/stage1_PPX": wandb.Image(ppx_image)})
-
-                            # FRM 입력(RGB) 피쳐맵 생성 및 로깅
-                            frm_image = create_tensor_grid_image(
-                                x1_cam, title="Stage 4 - FRM Input (RGB Features)")
-                            wandb.log({"val/stage4_FRM_input": wandb.Image(frm_image)})
-                            
-                            # FFM 최종 융합 피쳐맵 생성 및 로깅
-                            ffm_image = create_tensor_grid_image(
-                                x_fused, title="Stage 4 - Fused Features (FFM Output)")
-                            wandb.log({"val/stage4_FFM": wandb.Image(ffm_image)})
-
-                            # 승자 인덱스 맵 생성 및 로깅
-                            if winner_indices is not None:
-                                winner_map_image = create_channel_winners_image(
-                                    winner_indices=winner_indices,
-                                    modality_names=self.modals,
-                                    title='Stage 4 - Modality Winner per Channel'
-                                )
-                                wandb.log({"val/stage4_channel_winners": wandb.Image(winner_map_image)})
+            
+            # Hook을 통한 시각화/통계 로깅
+            if hasattr(self, '_visualization_hook') and self._visualization_hook is not None:
+                if x_scores is not None and winner_indices is not None:
+                    # Hard Selection 통계 로깅 (CMNeXt)
+                    self._visualization_hook.log_hard_selection_stats(
+                        x_scores=x_scores,
+                        winner_indices=winner_indices,
+                        modality_names=self.modals,
+                        log_prefix="stage4",
+                        batch_idx=0
+                    )
+                
+                # Feature map 시각화
+                feature_maps = {
+                    'PPX_features': x4_f_,
+                    'FRM_input': x4_cam,
+                    'FFM_output': x_fused
+                }
+                self._visualization_hook.log_feature_maps(
+                    feature_maps=feature_maps,
+                    log_prefix="stage4",
+                    batch_idx=0
+                )
             outs.append(x_fused)
         else:
             outs.append(x4_cam)
 
         return outs
 
-def vis_tensor_grid(tensor: torch.Tensor, batch=0, save_path='tmp_grid_colormap.png'):
-    """
-    Visualize all 12 channels of a tensor in a 4x3 grid with Grad-CAM style colormap (jet).
-    
-    Args:
-        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
-        batch (int): Batch index if tensor has a batch dimension.
-        save_path (str): Path to save the grid image.
-    """
-    import matplotlib.pyplot as plt
-    # Handle batch dimension
-    if tensor.dim() == 4:  # (B, C, H, W)
-        tensor = tensor[batch]
-    
-    C, H, W = tensor.shape
-    assert C > 12, "Tensor must have 12 channels"
-    
-    tensor_np = tensor.detach().cpu().numpy()
-    
-    # Normalize each channel to [0,1] for better colormap visualization
-    tensor_np = (tensor_np - tensor_np.min(axis=(1,2), keepdims=True)) / \
-                (tensor_np.max(axis=(1,2), keepdims=True) - tensor_np.min(axis=(1,2), keepdims=True) + 1e-8)
-    
-    # Create 4x3 subplot
-    fig, axes = plt.subplots(3, 4, figsize=(16, 12))
-    for i in range(12):
-        r, c = divmod(i, 4)
-        axes[r, c].imshow(tensor_np[i], cmap='jet')
-        axes[r, c].axis('off')
-        axes[r, c].set_title(f'Channel {i}')
-    
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-    print(f"Saved 12-channel Grad-CAM style grid to {save_path}")
-    
-def save_tensor_single_batch(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
-    '''
-    Visualize a 3D tensor (C, H, W) as a single image by stacking channels along width.
-    Args:
-        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
-        batch (int): Batch index if tensor has a batch dimension.
-        save_path (str): Path to save the image.
-    '''
-    import matplotlib.pyplot as plt
-    import numpy as np
-    tensor = tensor[batch]
-    if len(tensor.shape) != 3:
-        assert "Tensor must have 3 dimensions (C, H, W)"
-    C, H, W = tensor.shape
-    tensor_np = tensor.detach().cpu().numpy()
-    tensor_np = (tensor_np - tensor_np.min()) / (tensor_np.max() - tensor_np.min() + 1e-8)  # Normalize to [0, 1]
-    tensor_np = (tensor_np * 255).astype(np.uint8)  # Convert to uint8 for visualization
-    # Create a grid of images
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.imshow(tensor_np.transpose(1, 2, 0))  # Transpose to (H, W, C)
-    ax.axis('off')
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-    
-def save_tensor_single_batch_grid(tensor:torch.tensor, batch=0, save_path='vis_tensor.png'):
-    '''
-    Visualize each channel of a 3D tensor (C, H, W) in a grid layout using a colormap.
-    Args:
-        tensor (torch.Tensor): Input tensor of shape (C, H, W) or (B, C, H, W).
-        batch (int): Batch index if tensor has a batch dimension.
-        save_path (str): Path to save the grid image.
-    '''
-    
-    import matplotlib.pyplot as plt
-    import numpy as np
-    
-    tensor = tensor[batch]
-    tensor_np = tensor.detach().cpu().numpy()
-    C, H, W = tensor_np.shape
-    ncols = int(np.ceil(np.sqrt(C)))
-    nrows = int(np.ceil(C / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
-    axes = axes.flatten()
-    
-    for i in range(C):
-        ch = tensor_np[i]
-        axes[i].imshow(ch, cmap='jet')
-        axes[i].axis('off')
-        axes[i].set_title(f"Channel {i}", fontsize=10)
-    
-    # Hide unused axes
-    for j in range(C, len(axes)):
-        axes[j].axis('off')
-    
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-    print(f"Saved tensor visualization grid to {save_path}")
-
-def save_channel_winners(
-    winner_indices: torch.Tensor,
-    modality_names: List[str],
-    save_path: str = 'feature_map.png',
-    title: str = 'Modality Winner Map per Channel',
-    batch_idx: int = 0
-):
-    """
-    (B, C, H, W) 형태의 다중 채널 '승자 인덱스' 맵을 입력받아,
-    각 채널을 R,G,B로 색칠된 이미지로 변환하고 그리드 형태로 시각화하여 저장
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    # 4D 텐서(B, C, H, W)일 경우, 지정된 배치만 선택
-    if winner_indices.dim() == 4:
-        winner_indices = winner_indices[batch_idx]
-    
-    indices_np = winner_indices.detach().cpu().long().numpy()
-    C, H, W = indices_np.shape
-
-    # 그리드 크기 계산 (예: 64채널 -> 8x8)
-    ncols = int(np.ceil(np.sqrt(C)))
-    nrows = int(np.ceil(C / ncols))
-
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
-    axes = axes.flatten()
-    
-    # 전체 제목 추가 (범례 역할 포함)
-    legend_str = "Colors  :  "
-    for i, name in enumerate(modality_names):
-        if i < 3:
-            legend_str += f"{['R', 'G', 'B'][i]}:{name}  "
-    fig.suptitle(f'{title}\n({legend_str.strip()})', fontsize=16)
-
-    # ✅ [핵심] 컬러 팔레트를 미리 정의
-    color_palette = np.array([
-        [255, 0, 0],   # 인덱스 0 (Red)
-        [0, 255, 0],   # 인덱스 1 (Green)
-        [0, 0, 255],   # 인덱스 2 (Blue)
-        [255, 255, 0]  # 인덱스 3 (Yellow)
-    ], dtype=np.uint8)
-    
-    for i in range(C):
-        # i번째 채널의 인덱스 맵을 가져옴. Shape: (H, W)
-        index_map = indices_np[i]
-        
-        # ✅ [핵심] (H, W) 인덱스 맵을 (H, W, 3) RGB 이미지로 변환
-        rgb_image = color_palette[index_map]
-        
-        ax = axes[i]
-        # ✅ [핵심] cmap이 아닌, 변환된 RGB 이미지를 직접 그림
-        ax.imshow(rgb_image)
-        ax.axis('off')
-        ax.set_title(f"Ch: {i}", fontsize=10)
-    
-    # 사용하지 않는 나머지 subplot 숨기기
-    for j in range(C, len(axes)):
-        axes[j].axis('off')
-    
-    plt.tight_layout(rect=[0, 0, 1, 0.92]) # suptitle과 겹치지 않도록 조정
-    plt.savefig(save_path)
-    plt.close(fig)
-    print(f"Saved channel winner visualization to {save_path}")
-
-
-def create_tensor_grid_image(
-    tensor: torch.Tensor,
-    title: str = 'Feature Map Channels',
-    batch_idx: int = 0
-) -> np.ndarray:
-    """
-    [개선된 버전]
-    (B, C, H, W) 또는 (C, H, W) 형태의 텐서를 입력받아, 모든 채널을
-    그리드 형태로 시각화하고 그 결과를 NumPy 이미지 배열로 반환합니다.
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if tensor.dim() == 4:
-        tensor = tensor[batch_idx]
-    
-    tensor_np = tensor.detach().cpu().numpy()
-    C, H, W = tensor_np.shape
-
-    ncols = int(np.ceil(np.sqrt(C)))
-    nrows = int(np.ceil(C / ncols))
-
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
-    axes = axes.flatten()
-    
-    fig.suptitle(title, fontsize=16)
-    
-    for i in range(C):
-        channel_feature = tensor_np[i]
-        if channel_feature.max() > channel_feature.min():
-            channel_feature = (channel_feature - channel_feature.min()) / (channel_feature.max() - channel_feature.min())
-            
-        ax = axes[i]
-        ax.imshow(channel_feature, cmap='jet')
-        ax.axis('off')
-        ax.set_title(f"Ch: {i}", fontsize=10)
-    
-    for j in range(C, len(axes)):
-        axes[j].axis('off')
-    
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    
-    # ✅ Figure를 파일로 저장하는 대신 RGB 버퍼로 렌더링
-    fig.canvas.draw()
-    img_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-
-    # ✅ Figure 객체를 닫아 메모리 누수 방지
-    plt.close(fig)
-
-    return img_array
-
-
-def create_channel_winners_image(
-    winner_indices: torch.Tensor,
-    modality_names: List[str],
-    title: str = 'Modality Winner Map per Channel',
-    batch_idx: int = 0
-) -> np.ndarray:
-    """
-    [개선된 버전]
-    다중 채널 '승자 인덱스' 맵의 시각화 이미지를 생성하여,
-    파일로 저장하는 대신 NumPy 배열로 반환합니다.
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if winner_indices.dim() == 4:
-        winner_indices = winner_indices[batch_idx]
-    
-    indices_np = winner_indices.detach().cpu().numpy()
-    C, H, W = indices_np.shape
-
-    ncols = int(np.ceil(np.sqrt(C)))
-    nrows = int(np.ceil(C / ncols))
-
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
-    axes = axes.flatten()
-    
-    legend_str = "Colors: "
-    for i, name in enumerate(modality_names):
-        if i < 3:
-            legend_str += f"{['R', 'G', 'B'][i]}:{name}  "
-    fig.suptitle(f'{title}\n({legend_str.strip()})', fontsize=16)
-
-    color_palette = np.array([
-        [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]
-    ], dtype=np.uint8)
-    
-    for i in range(C):
-        index_map = indices_np[i]
-        rgb_image = color_palette[index_map]
-        
-        ax = axes[i]
-        ax.imshow(rgb_image)
-        ax.axis('off')
-        ax.set_title(f"Ch: {i}", fontsize=10)
-    
-    for j in range(C, len(axes)):
-        axes[j].axis('off')
-    
-    plt.tight_layout(rect=[0, 0, 1, 0.92])
-    
-    # ✅ Figure를 파일로 저장하는 대신 RGB 버퍼로 렌더링
-    fig.canvas.draw()
-    img_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-
-    # ✅ Figure 객체를 닫아 메모리 누수 방지
-    plt.close(fig)
-    
-    return img_array
+# 시각화 관련 함수들은 CMNeXtVisualizationHook으로 이동됨
