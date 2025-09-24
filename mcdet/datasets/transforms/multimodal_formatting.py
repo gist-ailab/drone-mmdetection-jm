@@ -20,10 +20,17 @@ class PackDELIVERDetInputs:
                  )):
         self.meta_keys = meta_keys
     
+
     def _format_gt_instances(self, results: Dict) -> InstanceData:
-        """Format ground truth instances with proper tensor types."""
+        """
+        [수정된 최종 버전]
+        Ground truth 인스턴스를 포맷하며, 인스턴스가 없는 경우에도
+        항상 올바른 형태의 빈 텐서를 생성하여 안정성을 보장합니다.
+        """
         gt_instances = InstanceData()
-        if 'instances' in results:
+        
+        # results에 'instances' 키가 있고, 그 리스트가 비어있지 않은 경우
+        if 'instances' in results and results['instances']:
             bboxes = []
             labels = []
             for instance in results['instances']:
@@ -31,11 +38,29 @@ class PackDELIVERDetInputs:
                     bboxes.append(instance['bbox'])
                 if 'bbox_label' in instance:
                     labels.append(instance['bbox_label'])
-            if bboxes:                          # Ensure bboxes are float32 tensors
-                gt_instances.bboxes = torch.tensor(bboxes, dtype=torch.float32)            
-            if labels:                  # Ensure labels are long tensors    
+
+            # bboxes 리스트가 비어있지 않으면 텐서로 변환, 비어있으면 빈 텐서 생성
+            if bboxes:
+                gt_instances.bboxes = torch.tensor(bboxes, dtype=torch.float32)
+            else:
+                gt_instances.bboxes = torch.empty((0, 4), dtype=torch.float32)
+
+            # labels 리스트가 비어있지 않으면 텐서로 변환, 비어있으면 빈 텐서 생성
+            if labels:
                 gt_instances.labels = torch.tensor(labels, dtype=torch.long)
-        
+            else:
+                gt_instances.labels = torch.empty((0,), dtype=torch.long)
+
+        # 'instances' 키가 없거나, 리스트가 처음부터 비어있는 경우
+        else:
+            # 모델의 loss 함수가 에러를 일으키지 않도록
+            # .bboxes와 .labels 속성을 명시적으로 생성해줍니다.
+            gt_instances.bboxes = torch.empty((0, 4), dtype=torch.float32)
+            gt_instances.labels = torch.empty((0,), dtype=torch.long)
+            
+            # 만약 mask 등 다른 GT 데이터를 사용한다면, 해당 키에 대해서도
+            # 빈 객체를 생성해주는 코드를 추가해야 할 수 있습니다.
+
         return gt_instances
     
     def __call__(self, results: Dict) -> Dict:
@@ -73,6 +98,9 @@ class PackDELIVERDetInputs:
         data_sample.set_metainfo(metainfo)
         
         packed_results['data_samples'] = data_sample
+        
+        
+        
         return packed_results
     
     # 기타 메서드들은 기존과 동일...

@@ -1,10 +1,11 @@
-# Default config for DELIVER detection dataset
-# custom_configs/DELIVER/deliver_dataset.py
+# custom_configs/Sejong/yeon/sejong_dataset.py
+
 import os
-# _base_ = [
-#     '../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path
-#     '../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  
-# ]
+_base_ = [
+    '../../../configs/_base_/schedules/schedule_2x.py',  # Fixed: correct relative path
+    '../../../configs/_base_/default_runtime.py'         # Fixed: correct relative path  
+]
+
 
 # Dataset basic info
 dataset_type = 'SejongDetectionDataset'

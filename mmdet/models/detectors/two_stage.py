@@ -157,8 +157,20 @@ class TwoStageDetector(BaseDetector):
         Returns:
             dict: A dictionary of loss components
         """
+        # if isinstance(batch_inputs, list):
+        #     for i, tensor in enumerate(batch_inputs):
+        #         print(f"  - DEBUG: Shape of tensor for modality {i}: {tensor.shape}")
+        #         if 0 in tensor.shape[2:]:
+        #             print(f"ERROR: Zero-sized dimension detected in tensor for modality {i}!")
+        #             import pdb; pdb.set_trace()
+        # else: 
+        #     print(f"DEBUG: Input batch_inputs shape: {batch_inputs.shape}")
+        #     if 0 in batch_inputs.shape[2:]:
+        #         print("ERROR: Zero-sized dimension detected in input tensor!")
+        #         import pdb; pdb.set_trace()
+            
+            
         x = self.extract_feat(batch_inputs)
-
         losses = dict()
 
         # RPN forward and loss

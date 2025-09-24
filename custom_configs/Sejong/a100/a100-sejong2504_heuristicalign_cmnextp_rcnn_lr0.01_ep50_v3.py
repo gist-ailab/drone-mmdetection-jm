@@ -2,10 +2,24 @@
 
 import os
 _base_ = [
-    './deliver_dataset.py'  # Inherit dataset config
+    './sejong_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped'
+
+norm_cfg = dict(
+    mean=[[123.675, 116.28, 103.53],  # RGB mean
+          [127.5, 127.5, 127.5],      # Depth mean (예시)
+          [127.5, 127.5, 127.5],      # Event mean (예시)
+          [127.5, 127.5, 127.5]],     # LiDAR mean (예시)
+    std=[[58.395, 57.12, 57.375],     # RGB std
+         [127.5, 127.5, 127.5],      # Depth std (예시)
+         [127.5, 127.5, 127.5],      # Event std (예시)
+         [127.5, 127.5, 127.5]],     # LiDAR std (예시)
+    to_rgb=[True, False, False, False] # RGB만 BGR->RGB 변환
+)
+
+
+data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -27,6 +41,7 @@ train_pipeline = [
         prob=0.5,
         bbox_format='xywh'
     ),
+    dict(type='DELIVERNormalize', **norm_cfg),
     dict(type='PackDELIVERDetInputs')
 ]
 
@@ -39,6 +54,7 @@ test_pipeline = [
         keep_ratio=True,
         bbox_format='xywh'
     ),
+    dict(type='DELIVERNormalize', **norm_cfg),
     dict(type='LoadAnnotations', with_bbox=True), # 🔥 GT 로드를 위해 추가
     dict(type='PackDELIVERDetInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor'))
@@ -51,8 +67,8 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='CMNeXtPBackbone',
+        backbone='CMNeXtP-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
@@ -161,7 +177,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=2,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -169,7 +185,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -186,7 +202,7 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -235,13 +251,16 @@ optim_wrapper = dict(
 # vis_backends = _base_.vis_backends
 # visualizer = _base_.visualizer
 
+experiment_name = 'sejong2504_heuristicalign_cmnext_b2_rcnn_multiscale_v2'
+
+
 vis_backends = [
     dict(type='LocalVisBackend'),
     dict(
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
+            name=f'{experiment_name}',
             tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
@@ -295,7 +314,6 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 

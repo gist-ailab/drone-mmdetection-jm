@@ -2,10 +2,10 @@
 
 import os
 _base_ = [
-    './deliver_dataset.py'  # Inherit dataset config
+    './sejong_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped'
+data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -51,8 +51,8 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='CMNeXtPSPBackbone',
+        backbone='CMNeXtPSP-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
@@ -169,7 +169,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -186,7 +186,7 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -229,11 +229,9 @@ optim_wrapper = dict(
 )
 
 
-# # Hooks, Logger, Visualizer (기존 설정 유지)
-# default_hooks = _base_.default_hooks
-# log_processor = _base_.log_processor
-# vis_backends = _base_.vis_backends
-# visualizer = _base_.visualizer
+
+experiment_name = 'sejong2504_heuristicalign_cmnextpsp_b2_rcnn_multiscale_v2'
+
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -241,8 +239,8 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
-            tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
+            name=f'{experiment_name}',
+            tags=['cmnext','cmnextpsp' 'RCNN', 'full-finetune', 'epoch-50'],
             notes='Stitfusion RCNN with epoch 50 SGD',
             save_code=True
         ),
@@ -295,7 +293,6 @@ visualizer = dict(
 
 
 # Experiment name
-experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 

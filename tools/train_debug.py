@@ -15,7 +15,7 @@ from mmdet import *
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     # parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_sharednone.py', help='train config file path')
-    parser.add_argument('--config',default='/media/ailab/HDD1/Workspace/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/Sejong/yeon/debug-sejong2504_cropped_cmnextp_rcnn_lr0.01_ep50_v2.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/custom_configs/Sejong/yeon/yeon-sejong2504_cropped_cmnextp_rcnn_lr0.01_ep50_v2.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
@@ -132,4 +132,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-# frame_1741660253.629987.png

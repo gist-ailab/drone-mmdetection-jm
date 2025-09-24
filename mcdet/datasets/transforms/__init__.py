@@ -8,7 +8,8 @@ from .deliver_transforms import (
     DELIVERRandomChoice,
     DELIVERRandomChoiceResize,
     DELIVERRandomMasking,
-    DELIVERModalityDropout
+    DELIVERModalityDropout,
+    DELIVERNormalize
 )
 from .multimodal_formatting import (
     PackDELIVERDetInputs,
@@ -22,5 +23,6 @@ __all__=[
     'DELIVERRandomChoice',
     'DELIVERRandomChoiceResize',
     'DELIVERRandomMasking',
-    'DELIVERModalityDropout'
+    'DELIVERModalityDropout',
+    'DELIVERNormalize'
 ]

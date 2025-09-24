@@ -1,11 +1,11 @@
-# custom_configs/DELIVER/lecun-sejong2504_cmnext_rcnn_v2.py
+# custom_configs/Sejong/a100/a100-sejong2504_heuristicalign_cmnextpsp_rcnn_lr0.01_ep50_v2_with_visualization.py
 
 import os
 _base_ = [
-    './deliver_dataset.py'  # Inherit dataset config
+    './sejong_dataset.py'  # Inherit dataset config
 ]
 
-data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped'
+data_root = '/home/jovyan/SSDc/jemo_maeng/dset/drone_250312_sejong_multimodal_coco_cropped/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
@@ -16,8 +16,6 @@ train_pipeline = [
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='DELIVERResize',
-        # 🔥 원본 비율(640x480)을 고려한 Multi-scale 학습. (H, W) 순서.
-        #    모델이 다양한 크기의 객체를 학습하여 성능 향상에 도움이 됩니다.
         img_scale=[(480, 640),  (640, 852)], # 4:3 비율 유지
         keep_ratio=True,
         bbox_format='xywh'
@@ -30,7 +28,6 @@ train_pipeline = [
     dict(type='PackDELIVERDetInputs')
 ]
 
-# 검증/테스트 시에는 단일 스케일로 고정
 test_pipeline = [
     dict(type='LoadDELIVERImages'),
     dict(
@@ -43,16 +40,14 @@ test_pipeline = [
     dict(type='PackDELIVERDetInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor'))
 ]
-# -----------------------------------------------------------------
 
 
-# Model settings (모델 구조는 변경 없음)
 model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNextBackbone',
-        backbone='CMNeXt-B2',
+        type='CMNeXtPSPBackbone',
+        backbone='CMNeXtPSP-B2',
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
@@ -161,7 +156,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=2,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -169,7 +164,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/train.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -186,7 +181,7 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=f'{data_root}labels/test.json',
-        data_prefix=dict(img='images'),
+        data_prefix=dict(img='heuristic_aligned'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -229,11 +224,9 @@ optim_wrapper = dict(
 )
 
 
-# # Hooks, Logger, Visualizer (기존 설정 유지)
-# default_hooks = _base_.default_hooks
-# log_processor = _base_.log_processor
-# vis_backends = _base_.vis_backends
-# visualizer = _base_.visualizer
+
+experiment_name = 'sejong2504_heuristicalign_cmnextpsp_b2_rcnn_multiscale_v2_with_visualization'
+
 
 vis_backends = [
     dict(type='LocalVisBackend'),
@@ -241,9 +234,9 @@ vis_backends = [
         type='WandbVisBackend',
         init_kwargs=dict(
             project='DELIVER',
-            name='sejong2504_cmnext_b2_rcnn_multiscale_v2',
-            tags=['cmnext', 'RCNN', 'full-finetune', 'epoch-50'],
-            notes='Stitfusion RCNN with epoch 50 SGD',
+            name=f'{experiment_name}',
+            tags=['cmnext','cmnextpsp', 'RCNN', 'full-finetune', 'epoch-50', 'visualization'],
+            notes='CMNeXtPSP RCNN with visualization hook - epoch 50 SGD',
             save_code=True
         ),
     )
@@ -274,9 +267,20 @@ default_hooks = dict(
         wait_time=0.01
     ),
     step_tracker=dict(type='StepTrackerHook'),
-
     vis_log_resetter=dict(type='VisLogHook'),
 )
+
+# 🔥 CMNeXtVisualizationHook 추가
+custom_hooks = [
+    dict(
+        type='CMNeXtVisualizationHook',
+        log_interval=1000,           # 1000 iteration마다 로깅
+        log_training=False,          # 훈련 중 로깅 비활성화 (성능 향상)
+        log_validation=True,         # 검증 중 로깅 활성화
+        save_images=True,            # 이미지 저장 활성화
+        image_save_dir='./visualization_outputs'  # 이미지 저장 디렉토리
+    )
+]
 
 # ✅ Simplified log processor
 log_processor = dict(
@@ -293,9 +297,7 @@ visualizer = dict(
 )
 
 
-
 # Experiment name
-experiment_name = 'sejong2504_cropped_cmnext_b2_rcnn_multiscale_v2'
 work_dir = f'./work_dirs/{experiment_name}'
 
 

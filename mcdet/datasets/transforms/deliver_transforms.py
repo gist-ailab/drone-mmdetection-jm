@@ -9,6 +9,7 @@ from mmdet.registry import TRANSFORMS
 from mmdet.datasets.transforms import Resize, RandomCrop, RandomFlip
 from typing import Dict, List, Tuple, Union, Optional
 import copy
+from mmcv.image.photometric import imnormalize
 
 import mmengine
 import numpy as np
@@ -674,3 +675,82 @@ class DELIVERModalityDropout(BaseTransform):
                 results['img'][index] = np.zeros_like(img_to_drop)
 
         return results
+
+
+
+
+
+@TRANSFORMS.register_module()
+class DELIVERNormalize(BaseTransform):
+    """
+    Normalize a list of multimodal images with specific mean and std.
+    This transform supports different normalization parameters for each modality.
+    """
+
+    def __init__(self,
+                 mean: List[List[float]],
+                 std: List[List[float]],
+                 to_rgb: List[bool] = None):
+        """
+        Args:
+            mean (List[List[float]]): Mean values for each modality.
+                Example: [[123.675, 116.28, 103.53], [114.0, 114.0, 114.0]]
+            std (List[List[float]]): Standard deviation values for each modality.
+                Example: [[58.395, 57.12, 57.375], [57.0, 57.0, 57.0]]
+            to_rgb (List[bool], optional): Whether to convert the image from BGR to RGB
+                before normalization. Defaults to None. If provided, its length must
+                match the number of modalities.
+        """
+        self.mean = np.array(mean, dtype=np.float32)
+        self.std = np.array(std, dtype=np.float32)
+        self.to_rgb = to_rgb
+
+        # 입력값 유효성 검사
+        if self.mean.shape[0] != self.std.shape[0]:
+            raise ValueError(
+                f'The number of means({self.mean.shape[0]}) must be equal to '
+                f'the number of stds({self.std.shape[0]})')
+        
+        if to_rgb is not None and self.mean.shape[0] != len(to_rgb):
+            raise ValueError(
+                f'The number of to_rgb flags({len(to_rgb)}) must be equal to '
+                f'the number of modalities({self.mean.shape[0]})')
+
+    def transform(self, results: Dict) -> Dict:
+        """
+        Apply normalization to a list of images.
+
+        Args:
+            results (dict): The result dict containing a list of images in 'img'.
+
+        Returns:
+            dict: The result dict with normalized images.
+        """
+        # `results['img']`는 이미지(np.ndarray)의 리스트여야 합니다.
+        images = results['img']
+        
+        if len(images) != self.mean.shape[0]:
+            raise ValueError(
+                f"The number of images ({len(images)}) in the input does not "
+                f"match the number of normalization parameters ({self.mean.shape[0]})")
+        
+        normalized_images = []
+        for i, img in enumerate(images):
+            # i번째 모달리티에 해당하는 mean, std, to_rgb 값을 가져옵니다.
+            current_mean = self.mean[i, :]
+            current_std = self.std[i, :]
+            current_to_rgb = self.to_rgb[i] if self.to_rgb is not None else False
+
+            # mmcv의 imnormalize 함수를 사용하여 정규화 수행
+            # to_float32=False로 설정하여 불필요한 타입 변환을 방지합니다.
+            # (이전 단계에서 이미 float32로 변환되었다고 가정)
+            normalized_img = imnormalize(img, current_mean, current_std, current_to_rgb)
+            normalized_images.append(normalized_img)
+
+        results['img'] = normalized_images
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(mean={self.mean.tolist()}, std={self.std.tolist()}, to_rgb={self.to_rgb})'
+        return repr_str
