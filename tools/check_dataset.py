@@ -11,13 +11,10 @@ pth = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco/annotations/val.json'
 coco = COCO(pth)
 img_ids = coco.getImgIds()
 ann_ids = coco.getAnnIds(img_ids[0])
-
 img_id = img_ids[0]
 ann_ids = coco.getAnnIds(img_id)
 img_info = coco.loadImgs(img_id)[0]
 ann_info = coco.loadAnns(ann_ids)
-
-
 
 root = '/SSDb/jemo_maeng/dset/data/FLIR_aligned_coco/'
 prefix = 'val_RGB'
