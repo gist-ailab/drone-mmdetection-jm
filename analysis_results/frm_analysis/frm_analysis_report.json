@@ -1,0 +1,81 @@
+{
+    "analysis_summary": {
+        "total_stages": 4,
+        "stages_analyzed": [
+            "stage_0",
+            "stage_1",
+            "stage_2",
+            "stage_3"
+        ]
+    },
+    "stage_details": {
+        "stage_0": {
+            "lambda_c": 0.5,
+            "lambda_s": 0.5,
+            "total_samples": 50,
+            "channel_weights": {
+                "weight_0_mean": 0.41699086904525756,
+                "weight_1_mean": 0.5148009693622589,
+                "weight_0_std": 0.001385128782890848,
+                "weight_1_std": 0.00018625767138688473
+            },
+            "spatial_weights": {
+                "weight_0_mean": 0.7468830156326294,
+                "weight_1_mean": 0.9756814813613892,
+                "weight_0_std": 0.06796581481516509,
+                "weight_1_std": 0.0221172598234474
+            }
+        },
+        "stage_1": {
+            "lambda_c": 0.5,
+            "lambda_s": 0.5,
+            "total_samples": 50,
+            "channel_weights": {
+                "weight_0_mean": 0.5252003359794617,
+                "weight_1_mean": 0.48451216340065,
+                "weight_0_std": 0.00032404181304033293,
+                "weight_1_std": 0.00025408937799297447
+            },
+            "spatial_weights": {
+                "weight_0_mean": 0.9986526489257812,
+                "weight_1_mean": 0.15757911562919616,
+                "weight_0_std": 0.0005123585481898821,
+                "weight_1_std": 0.02277155970589549
+            }
+        },
+        "stage_2": {
+            "lambda_c": 0.5,
+            "lambda_s": 0.5,
+            "total_samples": 50,
+            "channel_weights": {
+                "weight_0_mean": 0.6166265022754669,
+                "weight_1_mean": 0.4355475616455078,
+                "weight_0_std": 0.0012368107135062674,
+                "weight_1_std": 0.0010957112113807671
+            },
+            "spatial_weights": {
+                "weight_0_mean": 0.3351660114526749,
+                "weight_1_mean": 0.2908933159708977,
+                "weight_0_std": 0.036626773966543714,
+                "weight_1_std": 0.0189763304615495
+            }
+        },
+        "stage_3": {
+            "lambda_c": 0.5,
+            "lambda_s": 0.5,
+            "total_samples": 50,
+            "channel_weights": {
+                "weight_0_mean": 0.6014159083366394,
+                "weight_1_mean": 0.4120657479763031,
+                "weight_0_std": 0.0011879133674907562,
+                "weight_1_std": 0.001133687090506418
+            },
+            "spatial_weights": {
+                "weight_0_mean": 0.687726469039917,
+                "weight_1_mean": 0.022871919525787234,
+                "weight_0_std": 0.026388051601338433,
+                "weight_1_std": 0.01259295894973449
+            }
+        }
+    }
+}

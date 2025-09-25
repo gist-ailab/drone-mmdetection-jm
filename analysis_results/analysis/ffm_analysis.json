@@ -1,0 +1,26 @@
+{
+    "stage_0": {
+        "avg_fusion_ratio": 1.3111769008636474,
+        "std_fusion_ratio": 0.021296754820321492,
+        "min_fusion_ratio": 1.2680600881576538,
+        "max_fusion_ratio": 1.3432579040527344
+    },
+    "stage_1": {
+        "avg_fusion_ratio": 7.5196204233169555,
+        "std_fusion_ratio": 28.6419080503547,
+        "min_fusion_ratio": -87.05027770996094,
+        "max_fusion_ratio": 133.1689910888672
+    },
+    "stage_2": {
+        "avg_fusion_ratio": 5.839555056095123,
+        "std_fusion_ratio": 82.16315885437244,
+        "min_fusion_ratio": -34.564064025878906,
+        "max_fusion_ratio": 578.5575561523438
+    },
+    "stage_3": {
+        "avg_fusion_ratio": 1.0098123610019685,
+        "std_fusion_ratio": 0.4282932061539991,
+        "min_fusion_ratio": 0.5490858554840088,
+        "max_fusion_ratio": 2.683234453201294
+    }
+}
