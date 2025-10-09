@@ -51,7 +51,7 @@ model = dict(
         modals=['rgb', 'depth', 'event', 'lidar'],
         out_indices=(0, 1, 2, 3),
         frozen_stages=-1,
-        pretrained='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
     ),
     neck=dict(
         type='FPN',
@@ -155,7 +155,7 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=12,
     num_workers=4, # 🔥 워커 수 상향 조정
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
