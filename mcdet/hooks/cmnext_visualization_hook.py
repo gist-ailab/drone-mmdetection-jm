@@ -11,7 +11,9 @@ from typing import List, Dict, Any, Optional
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
 from mmdet.registry import HOOKS
-
+import torch.nn as nn
+from torch import Tensor
+from mmengine.dist import master_only
 try:
     import wandb
 except ImportError:

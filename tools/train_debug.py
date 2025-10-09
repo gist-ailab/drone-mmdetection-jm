@@ -15,7 +15,7 @@ from mmdet import *
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     # parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/custom_configs/DELIVER/hinton-deliver_stitchfusion_rcnn_lr0.01_sharednone.py', help='train config file path')
-    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/custom_configs/Sejong/yeon/yeon-sejong2504_cropped_cmnextp_rcnn_lr0.01_ep50_v2.py', help='train config file path')
+    parser.add_argument('--config',default='/SSDb/jemo_maeng/src/Project/Drone/detection/drone-mmdetection-jm/custom_configs/Sejong/yeon/yeon-sejong2504_heuristicalign_10p_cmnextpsp_rcnn_lr0.01_ep50_v2_with_visualization.py', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
