@@ -1047,7 +1047,7 @@ class CMNeXtPSPShuffled0213(CMNeXtPSP):
     """
     def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
         # 부모 클래스(CMNeXtPSP)의 __init__ 메서드를 그대로 호출하여
-        # 모든 변수와 레이어를 초기화합니다.
+        # 모든 t 변수와 레이어를 초기화합니다.
         super().__init__(model_name=model_name, modals=modals)
 
     def forward(self, x: list) -> list:
