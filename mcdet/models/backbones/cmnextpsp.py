@@ -1039,3 +1039,47 @@ def log_soft_mix_stats(
             wandb.log({f"{log_prefix}_contribution_map": wandb.Image(color_map_np, caption=caption.strip())})
     except Exception:
         pass
+    
+    
+class CMNeXtPSPShuffled0213(CMNeXtPSP):
+    """
+    CMNeXtPSP를 상속받아 forward 메서드의 입력 순서만 변경하는 클래스.
+    """
+    def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
+        # 부모 클래스(CMNeXtPSP)의 __init__ 메서드를 그대로 호출하여
+        # 모든 변수와 레이어를 초기화합니다.
+        super().__init__(model_name=model_name, modals=modals)
+
+    def forward(self, x: list) -> list:
+        """
+        입력 순서를 [0, 2, 1, 3]으로 재배치한 후,
+        부모 클래스의 원래 forward 로직을 실행합니다.
+        """
+        # ✅ 입력 리스트 x의 순서를 [0, 2, 1, 3]으로 재배치
+        if len(x) == 4:
+            x = [x[0], x[2], x[1], x[3]]
+        
+        # 순서가 바뀐 x를 사용하여 부모 클래스의 forward 메서드를 호출
+        return super().forward(x)
+    
+    
+class CMNeXtPSPShuffled0132(CMNeXtPSP):
+    """
+    CMNeXtPSP를 상속받아 forward 메서드의 입력 순서만 변경하는 클래스.
+    """
+    def __init__(self, model_name: str = 'B0', modals: list = ['rgb', 'depth', 'event', 'lidar']):
+        # 부모 클래스(CMNeXtPSP)의 __init__ 메서드를 그대로 호출하여
+        # 모든 변수와 레이어를 초기화합니다.
+        super().__init__(model_name=model_name, modals=modals)
+
+    def forward(self, x: list) -> list:
+        """
+        입력 순서를 [0, 2, 1, 3]으로 재배치한 후,
+        부모 클래스의 원래 forward 로직을 실행합니다.
+        """
+        # ✅ 입력 리스트 x의 순서를 [0, 2, 1, 3]으로 재배치
+        if len(x) == 4:
+            x = [x[0], x[1], x[3], x[2]]
+        
+        # 순서가 바뀐 x를 사용하여 부모 클래스의 forward 메서드를 호출
+        return super().forward(x)

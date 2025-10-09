@@ -9,7 +9,7 @@ echo "🚀 Starting training with CMNeXtVisualizationHook..."
 echo "📊 Model type: $MODEL_TYPE"
 
 # GPU 설정
-export CUDA_VISIBLE_DEVICES=3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=2,3,4,5
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 # 모델 타입에 따른 설정 파일 선택
@@ -17,7 +17,7 @@ if [ "$MODEL_TYPE" = "cmnext" ]; then
     CONFIG_FILE="custom_configs/Sejong/a100/a100-sejong2504_heuristicalign_cmnext_rcnn_lr0.01_ep50_v2_with_visualization.py"
     echo "🔧 Using CMNeXt model configuration"
 elif [ "$MODEL_TYPE" = "cmnextp" ]; then
-    CONFIG_FILE="custom_configs/Sejong/a100/a100-sejong2504_heuristicalign_cmnextpsp_rcnn_lr0.01_ep50_v2_with_visualization.py"
+    CONFIG_FILE="custom_configs/Sejong/lecun/lecun-sejong2504_heuristicalign_cmnextpspshuffled0132_rcnn_lr0.01_ep50_v2_with_visualization.py"
     echo "🔧 Using CMNeXtP model configuration"
 else
     echo "❌ Error: Invalid model type. Use 'cmnext' or 'cmnextp'"
@@ -33,13 +33,11 @@ echo "📈 Wandb logging enabled for visualization"
 echo "🔍 Hook will log modality selection statistics and feature maps"
 
 # 훈련 실행
-torchrun --nproc_per_node=5 \
-    --master_port=29600 \
+torchrun --nproc_per_node=4 \
+    --master_port=29602 \
     tools/train_debug.py \
     --config $CONFIG_FILE \
     --launcher pytorch
 
 echo "✅ Training completed!"
-echo "📊 Check Wandb dashboard for visualization results"
-echo "📁 Check ./visualization_outputs/ for saved images"
 
