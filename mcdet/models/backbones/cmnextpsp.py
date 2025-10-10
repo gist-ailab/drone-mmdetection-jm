@@ -18,9 +18,13 @@ from functools import partial
 import warnings
 import torch.nn.functional as F
 import numpy as np
+import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # 비-인터랙티브 백엔드 설정
 import torch.distributed as dist
+import matplotlib
+import os
+from PIL import Image
 
 try:
     import wandb
@@ -723,6 +727,20 @@ class CMNeXtPSP(nn.Module):
         attention_weights 맵을 추가로 반환합니다.
         """
         x_scores = module(x_ext)
+        '''
+        modal_1 = x_ext[0]
+        modal_2 = x_ext[1]
+        modal_3 = x_ext[2]
+        modal_1_1 = modal_1[0]
+        modal_2_1 = modal_2[0]
+        modal_3_1 = modal_3[0]
+        score_1 = x_scores[0]
+        score_2 = x_scores[1]
+        score_3 = x_scores[2]
+        score_1_1 = score_1[0]
+        score_2_1 = score_2[0]
+        score_3_1 = score_3[0]
+        '''
         stacked_scores = torch.cat(x_scores, dim=1)
         attention_weights = F.softmax(stacked_scores, dim=1)
         stacked_features = torch.stack(x_ext, dim=1)
@@ -811,3 +829,80 @@ class CMNeXtPSPShuffled0132(CMNeXtPSP):
         
         # 순서가 바뀐 x를 사용하여 부모 클래스의 forward 메서드를 호출
         return super().forward(x)
+    
+    
+
+def plot_modality_grid(image_tensor: torch.Tensor, save_path: str):
+    """
+    64개의 모달리티 이미지를 8x8 그리드 형태로 저장합니다.
+
+    Args:
+        image_tensor (torch.Tensor): [64, H, W] 형태의 이미지 텐서.
+        save_path (str): 그리드 이미지를 저장할 경로.
+    """
+    # 입력 텐서의 크기가 64인지 확인
+    if image_tensor.shape[0] != 64:
+        raise ValueError(f"입력 텐서는 64개의 이미지를 포함해야 합니다. 현재 크기: {image_tensor.shape[0]}")
+    
+    # 저장 경로의 디렉터리가 없으면 생성
+    dir_name = os.path.dirname(save_path)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name, exist_ok=True)
+
+    # GPU 텐서일 경우 CPU로 이동하고 NumPy 배열로 변환
+    images = image_tensor.cpu().detach().numpy()
+    # 8x8 서브플롯 생성
+    fig, axes = plt.subplots(8, 8, figsize=(10, 10))
+    # 서브플롯 간의 간격 조정
+    fig.subplots_adjust(hspace=0.05, wspace=0.05)
+
+    # 각 서브플롯에 이미지 표시
+    for i, ax in enumerate(axes.flat):
+        ax.imshow(images[i], cmap='gray')
+        ax.axis('off') # 축 정보 숨기기
+
+    # 파일로 저장
+    plt.savefig(save_path, bbox_inches='tight', pad_inches=0.1)
+    plt.close(fig) # 메모리 해제
+    print(f"✅ 모달리티 그리드 이미지가 '{save_path}'에 저장되었습니다.")
+
+
+def save_score_as_image(score_tensor: torch.Tensor, save_path: str):
+    """
+    스코어 텐서를 0~255 범위로 정규화하여 흑백 이미지로 저장합니다.
+
+    Args:
+        score_tensor (torch.Tensor): [1, H, W] 형태의 스코어 텐서.
+        save_path (str): 스코어 이미지를 저장할 경로.
+    """
+    # 텐서 형태 확인 및 차원 축소: [1, H, W] -> [H, W]
+    if score_tensor.dim() == 3 and score_tensor.shape[0] == 1:
+        score_tensor = score_tensor.squeeze(0)
+    elif score_tensor.dim() != 2:
+        raise ValueError(f"입력 텐서는 [1, H, W] 또는 [H, W] 형태여야 합니다. 현재 형태: {score_tensor.shape}")
+        
+    # 저장 경로의 디렉터리가 없으면 생성
+    dir_name = os.path.dirname(save_path)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name, exist_ok=True)
+    # GPU 텐서일 경우 CPU로 이동
+    score = score_tensor.cpu()
+    # 0~1 사이로 정규화
+    min_val = score.min()
+    max_val = score.max()
+    
+    # 모든 값이 동일하여 분모가 0이 되는 경우 방지
+    if (max_val - min_val) > 0:
+        normalized_score = (score - min_val) / (max_val - min_val)
+    else:
+        normalized_score = torch.zeros_like(score)
+
+    # 0~255 범위로 스케일링 후 uint8 타입으로 변환
+    score_uint8 = (normalized_score * 255).detach().numpy().astype(np.uint8)
+
+    # NumPy 배열을 이미지 객체로 변환 ('L' 모드는 흑백)
+    img = Image.fromarray(score_uint8, 'L')
+    
+    # 이미지 저장
+    img.save(save_path)
+    print(f"✅ 스코어 이미지가 '{save_path}'에 저장되었습니다.")
