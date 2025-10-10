@@ -1,16 +1,26 @@
 # mcdet/models/detectors/__init__.py
+
+# 1. 필요한 모든 클래스를 파일 상단에서 한번에 임포트합니다.
 from .deliver_detector import (
     DELIVERDetector,
-    DELIVERFasterRCNN, 
+    DELIVERFasterRCNN,
     DELIVERRetinaNet,
     DELIVERDataPreprocessor,
-    # stack_multimodal_batch
 )
+from .custom_preprocessor import MultiModalDetDataPreprocessor
+from .list_preprocessor import ListDataPreprocessor
+
+from .custom_two_stage import MultiModalAttDetector, MultiModalTwoStageDetector
+from .custom_faster_rcnn import MultiModalFasterRCNN, MultiModalAttFasterRCNN
+
 
 __all__ = [
-    'DELIVERDetector',
-    'DELIVERFasterRCNN', 
-    'DELIVERRetinaNet',
+    # deliver_detector
+    'DELIVERDetector', 'DELIVERFasterRCNN', 'DELIVERRetinaNet',
     'DELIVERDataPreprocessor',
-    # 'stack_multimodal_batch'
+    # preprocessors
+    'MultiModalDetDataPreprocessor', 'ListDataPreprocessor',
+    # custom detectors
+    'MultiModalAttDetector', 'MultiModalTwoStageDetector', 'MultiModalFasterRCNN',
+    'MultiModalAttFasterRCNN'
 ]
