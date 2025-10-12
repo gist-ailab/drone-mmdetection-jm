@@ -137,10 +137,10 @@ def visualize(coco_path: str, data_root: str):
 def main():
     parser = argparse.ArgumentParser(description="Visualize Sejong Multimodal Dataset Ground Truth")
     parser.add_argument('--coco_path', 
-                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_V2/labels/test_filtered_cropped_400x381_10p.json',
+                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_V2/labels/test_filtered_10p.json',
                         help='Path to the COCO format annotation file (.json)')
     parser.add_argument('--data_root', 
-                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_V2/images_heuristic_cropped_400x381',
+                        default='/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_V2/images_heuristic',
                         help='Root directory of the dataset containing the "images" folder')
     args = parser.parse_args()
     
