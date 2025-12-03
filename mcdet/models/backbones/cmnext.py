@@ -358,7 +358,6 @@ class CMNextBackbone(BaseModule):
             outs = [features[i] for i in self.out_indices]
         else:
             raise ValueError(f"Unexpected features format: {type(features)}")
-        
         return tuple(outs)
     
     def train(self, mode: bool = True):

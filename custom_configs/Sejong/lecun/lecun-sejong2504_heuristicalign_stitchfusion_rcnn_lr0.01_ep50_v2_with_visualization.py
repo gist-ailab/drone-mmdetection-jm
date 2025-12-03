@@ -46,12 +46,12 @@ model = dict(
     type='FasterRCNN',
     data_preprocessor=_base_.data_preprocessor,
     backbone=dict(
-        type='CMNeXtPSPBackbone',
-        backbone='CMNeXtPSP-B2',
+        type='StitchFusionBackbone',  # The name of your new registered class
+        model_name='B2',             # Corresponds to [64, 128, 320, 512] channels
         modals=['rgb', 'depth', 'event', 'lidar'],
-        out_indices=(0, 1, 2, 3),
-        frozen_stages=-1,
-        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth'
+        out_indices=(0, 1, 2, 3),    # To output features from all 4 stages
+        frozen_stages=-1,            # -1 to train all stages, set to 0, 1, etc. to freeze
+        pretrained='/SSDb/jemo_maeng/src/Project/Drone24/detection/drone-mmdetection-jm/pretrained_weights/segformer/mit_b2.pth' # Path to pretrained weights
     ),
     neck=dict(
         type='FPN',
@@ -155,15 +155,15 @@ model = dict(
 
 # DataLoader settings
 train_dataloader = dict(
-    batch_size=12,
-    num_workers=4, # 🔥 워커 수 상향 조정
+    batch_size=6,
+    num_workers=4, 
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/train_filtered_10p.json',
-        data_prefix=dict(img='images_heuristic'),
+        ann_file=f'{data_root}labels/train_filtered_cropped_400x381.json',
+        data_prefix=dict(img='images_heuristic_cropped_400x381'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -179,8 +179,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/test_filtered_10p.json',
-        data_prefix=dict(img='images_heuristic'),
+        ann_file=f'{data_root}labels/test_filtered_cropped_400x381.json',
+        data_prefix=dict(img='images_heuristic_cropped_400x381'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -191,7 +191,7 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'labels/test_filtered_10p.json'),
+    ann_file=os.path.join(data_root, 'labels/test_filtered_cropped_400x381.json'),
     metric='bbox')
 
 # Training schedule
@@ -224,7 +224,7 @@ optim_wrapper = dict(
 
 
 
-experiment_name = 'sejong2504_heuristicalign_wocrop_10p_cmnextpsp_b2_rcnn_multiscale_v2_with_visualization'
+experiment_name = 'sejong2504_heuristicalign_stitchfusion_b2_rcnn_multiscale_v2_with_visualization'
 
 
 vis_backends = [
@@ -234,15 +234,22 @@ vis_backends = [
         init_kwargs=dict(
             project='DELIVER',
             name=f'{experiment_name}',
-            tags=['cmnext','cmnextpsp', 'RCNN', 'full-finetune', 'epoch-50', 'visualization', '10p'],
+            tags=['cmnext','cmnextpsp', 'RCNN', 'full-finetune', 'epoch-50', 'visualization'],
             notes='CMNeXtPSP RCNN with visualization hook - epoch 50 SGD',
             save_code=True
         ),
     )
 ]
+
+# ✅ Standard hooks configuration
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
-    logger=dict(type='LoggerHook', interval=50),
+    logger=dict(
+        type='LoggerHook', 
+        interval=50,
+        log_metric_by_epoch=True,
+        out_suffix='.log'
+    ),
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(
         type='CheckpointHook', 
@@ -251,14 +258,31 @@ default_hooks = dict(
         max_keep_ckpts=3
     ),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='DetVisualizationHook', draw=False),
-
-    # 🔥 여기에 CMNeXtVisualizationHook을 직접 추가합니다.
-    cmnext_visualizer=dict(
-        type='CMNeXtVisualizationHook',
-        interval=5 # 5 epoch의 validation마다 로깅
-    )
+    visualization=dict(
+        type='DetVisualizationHook',
+        draw=False,          # 시각화 비활성화 (성능 향상)
+        interval=500,        # 간격 늘림
+        show=False,
+        wait_time=0.01
+    ),
+    step_tracker=dict(type='StepTrackerHook'),
+    vis_log_resetter=dict(type='VisLogHook'),
 )
+
+# Experiment name
+work_dir = f'./work_dirs/{experiment_name}'
+
+# # 🔥 CMNeXtVisualizationHook 추가
+# custom_hooks = [
+#     dict(
+#         type='CMNeXtVisualizationHook',
+#         log_interval=1000,           # 1000 iteration마다 로깅
+#         log_training=False,          # 훈련 중 로깅 비활성화 (성능 향상)
+#         log_validation=True,         # 검증 중 로깅 활성화
+#         save_images=True,            # 이미지 저장 활성화
+#         image_save_dir=f'{work_dir}/visualization_outputs'  # 이미지 저장 디렉토리
+#     )
+# ]
 
 # ✅ Simplified log processor
 log_processor = dict(

@@ -7,8 +7,9 @@ from .custom_resnet import ATTResNet
 from .geminifusion import GeminiFusionBackbone
 from .cmnextp import CMNeXtPBackbone
 from .cmnextpsp import CMNeXtPSPBackbone
+from .stitchfusion import StitchFusionBackbone
 
 __all__ = [
     'CMNextBackbone', 'StitchFusionBackbone', 'ATTResNet',
-    'GeminiFusionBackbone', 'CMNeXtPBackbone', 'CMNeXtPSPBackbone'
+    'GeminiFusionBackbone', 'CMNeXtPBackbone', 'CMNeXtPSPBackbone', 'StitchFusionBackbone'
 ]

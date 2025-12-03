@@ -1,52 +1,29 @@
-import torch
-from torch import nn, Tensor
-from torch.nn import functional as F
-import torch.nn.init as init
-import numpy as np
-from math import factorial
+"""
+Minimal StitchFusion backbone adapter.
+
+This module adapts the idea of StitchFusion to MMDetection's backbone API.
+It expects multi-scale feature maps as inputs when used as a neck, but here
+we provide a minimal backbone-style wrapper that can be extended later.
+
+Note: The full StitchFusion from semantic segmentation is more complex.
+This stub provides a registered module so configs can import it safely and
+you can iterate on the fusion details without breaking training scripts.
+"""
+
+from typing import List, Tuple
 
 import torch
 import math
 import torch.nn as nn
 from torch import Tensor
-from collections import OrderedDict
+import torch.nn.functional as F
+import torch.nn.init as init
 from typing import Dict, List, Union, Optional, Tuple
 
 from mmdet.registry import MODELS
 from mmengine.model import BaseModule
-from mmengine.runner import CheckpointLoader
-from mcdet.models.modules.ffm import FeatureFusionModule as FFM
-from mcdet.models.modules.mspa import MSPABlock
-from mcdet.models.modules.ffm import FeatureRectifyModule as FRM
-import functools
-from functools import partial
-import warnings
-import torch.nn.functional as F
 
 
-# ------------------------------------- fusion block 模块 -------------------------------------------- #
-class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
-    Copied from timm
-    This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
-    the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
-    See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for
-    changing the layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use
-    'survival rate' as the argument.
-    """
-    def __init__(self, p: float = None):
-        super().__init__()
-        self.p = p
-
-    def forward(self, x: Tensor) -> Tensor:
-        if self.p == 0. or not self.training:
-            return x
-        kp = 1 - self.p
-        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        random_tensor = kp + torch.rand(shape, dtype=x.dtype, device=x.device)
-        random_tensor.floor_()  # binarize
-        return x.div(kp) * random_tensor
-    
 class MLP(nn.Module):
     def __init__(self, c1, c2):
         super().__init__()
@@ -99,6 +76,23 @@ class CustomPWConv(nn.Module):
         x = x.transpose(1, 2).view(B, C, H, W)
         x = self.bn(self.pwconv(x))
         return x.flatten(2).transpose(1, 2)
+
+class DropPath(nn.Module):
+    """Stochastic Depth per sample.
+    Same utility as used in many vision backbones.
+    """
+    def __init__(self, p: float = 0.0):
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: Tensor) -> Tensor:
+        if self.p == 0. or not self.training:
+            return x
+        keep_prob = 1 - self.p
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+        random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+        random_tensor.floor_()
+        return x.div(keep_prob) * random_tensor
 
 class Bi_direct_adapter(nn.Module):
     def __init__(self, dim, xavier_init=False):
@@ -551,19 +545,19 @@ class stitchfusion(nn.Module):
             # 1
             block = nn.ModuleList([Block_every_one(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
             # # 2
-            if i < 2 :
-                block = nn.ModuleList([Block(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j]) for j in range(depths[i])])
-            else:
-                block = nn.ModuleList([Block_every_one(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
+            # if i < 2 :
+            #     block = nn.ModuleList([Block(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j]) for j in range(depths[i])])
+            # else:
+            #     block = nn.ModuleList([Block_every_one(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
             
             # 3
-            block = nn.ModuleList([Block_every_two(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
+            # block = nn.ModuleList([Block_every_two(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
 
             # # 4
-            if i < 2 :
-                block = nn.ModuleList([Block(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j]) for j in range(depths[i])])
-            else:
-                block = nn.ModuleList([Block_every_two(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
+            # if i < 2 :
+            #     block = nn.ModuleList([Block(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j]) for j in range(depths[i])])
+            # else:
+            #     block = nn.ModuleList([Block_every_two(embed_dims[i], pano_1[i], pano_2[i], dpr[cur+j], self.num_modals+1) for j in range(depths[i])])
             
             norm = nn.LayerNorm(embed_dims[i])
             
@@ -614,274 +608,193 @@ class stitchfusion(nn.Module):
             outs.append(x_fusion)
 
         return outs
+def load_stitchfusion_model(model, model_file):
+    """
+    Helper function to load pretrained weights into the stitchfusion model.
+    This logic is adapted from your 'load_dualpath_model' function.
+    """
+    if isinstance(model_file, str):
+        raw_state_dict = torch.load(model_file, map_location=torch.device('cpu'))
+        # Handle checkpoints saved from different frameworks
+        if 'model' in raw_state_dict:
+            raw_state_dict = raw_state_dict['model']
+        elif 'state_dict' in raw_state_dict:
+            raw_state_dict = raw_state_dict['state_dict']
+    else:
+        raw_state_dict = model_file
+    
+    # Filter for weights that belong to the core model components
+    state_dict = {}
+    for k, v in raw_state_dict.items():
+        # This can be made more specific if needed
+        if k.find('patch_embed') >= 0 or k.find('block') >= 0 or k.find('norm') >= 0:
+            state_dict[k] = v
+
+    msg = model.load_state_dict(state_dict, strict=False)
+    print(f"✅ [StitchFusion] Pretrained model loaded with message: {msg}")
+    del state_dict
+
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
-    # Cut & paste from PyTorch official master until it's in a few official releases - RW
-    # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
+    # (Copied from your cmnext.py for weight initialization)
     def norm_cdf(x):
-        # Computes standard normal cumulative distribution function
         return (1. + math.erf(x / math.sqrt(2.))) / 2.
-
     if (mean < a - 2 * std) or (mean > b + 2 * std):
         warnings.warn("mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
                       "The distribution of values may be incorrect.",
                       stacklevel=2)
-
     with torch.no_grad():
-        # Values are generated by using a truncated uniform distribution and
-        # then using the inverse CDF for the normal distribution.
-        # Get upper and lower cdf values
         l = norm_cdf((a - mean) / std)
         u = norm_cdf((b - mean) / std)
-
-        # Uniformly fill tensor with values from [l, u], then translate to
-        # [2l-1, 2u-1].
         tensor.uniform_(2 * l - 1, 2 * u - 1)
-
-        # Use inverse cdf transform for normal distribution to get truncated
-        # standard normal
         tensor.erfinv_()
-
-        # Transform to proper mean, std
         tensor.mul_(std * math.sqrt(2.))
         tensor.add_(mean)
-
-        # Clamp to ensure it's in the proper range
         tensor.clamp_(min=a, max=b)
         return tensor
 
-
 def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
-    # type: (Tensor, float, float, float, float) -> Tensor
-    r"""Fills the input Tensor with values drawn from a truncated
-    normal distribution. The values are effectively drawn from the
-    normal distribution :math:`\mathcal{N}(\text{mean}, \text{std}^2)`
-    with values outside :math:`[a, b]` redrawn until they are within
-    the bounds. The method used for generating the random values works
-    best when :math:`a \leq \text{mean} \leq b`.
-    Args:
-        tensor: an n-dimensional `torch.Tensor`
-        mean: the mean of the normal distribution
-        std: the standard deviation of the normal distribution
-        a: the minimum cutoff value
-        b: the maximum cutoff value
-    Examples:
-        >>> w = torch.empty(3, 5)
-        >>> nn.init.trunc_normal_(w)
-    """
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
 
-class StitchfusionBaseModel(BaseModule):
-    """Base model wrapper for CMNext backbone."""
-    
+class StitchFusionBaseModel(BaseModule):
+    """
+    Base model wrapper for the stitchfusion backbone.
+    This cleanly separates the core network from the MMDetection API wrapper.
+    """
     def __init__(self, 
-                 backbone: str = 'CMNeXt-B0', 
+                 model_name: str = 'B2', 
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  init_cfg: Optional[dict] = None) -> None:
         super().__init__(init_cfg=init_cfg)
         
-        backbone_name, variant = backbone.split('-')
-        self.backbone = eval(backbone_name)(variant, modals)
+        # Instantiate your actual stitchfusion network here
+        self.backbone = stitchfusion(model_name, modals)
         self.modals = modals
 
-    # def _init_weights(self, m: nn.Module) -> None:
-    #     """Initialize weights."""
-    #     if isinstance(m, nn.Linear):
-    #         trunc_normal_(m.weight, std=.02)
-    #         if m.bias is not None:
-    #             nn.init.zeros_(m.bias)
-    #     elif isinstance(m, nn.Conv2d):
-    #         fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-    #         fan_out // m.groups
-    #         m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-    #         if m.bias is not None:
-    #             nn.init.zeros_(m.bias)
-    #     elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d)):
-    #         nn.init.ones_(m.weight)
-    #         nn.init.zeros_(m.bias)
     def _init_weights(self, m: nn.Module) -> None:
-        """개선된 weight 초기화"""
+        """Initialize weights from scratch."""
         if isinstance(m, nn.Linear):
-            # Xavier initialization for linear layers
-            nn.init.xavier_uniform_(m.weight)
+            trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, nn.Conv2d):
-            # Kaiming initialization for conv layers
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d)):
             nn.init.ones_(m.weight)
             nn.init.zeros_(m.bias)
-        elif isinstance(m, Bi_direct_adapter):
-            # 🔥 Adapter layers는 더 작은 값으로 초기화
-            for layer in [m.adapter_down, m.adapter_mid, m.adapter_up]:
-                nn.init.normal_(layer.weight, std=0.01)
-                nn.init.zeros_(layer.bias)
 
     def init_pretrained(self, pretrained: str = None) -> None:
-        """Load pretrained weights."""
-        # if pretrained:
-        #     if len(self.modals) > 1:
-        #         load_dualpath_model(self.backbone, pretrained)
-        #     else:
-        #         checkpoint = torch.load(pretrained, map_location='cpu')
-        #         if 'state_dict' in checkpoint.keys():
-        #             checkpoint = checkpoint['state_dict']
-        #         if 'model' in checkpoint.keys():
-        #             checkpoint = checkpoint['model']
-        #         msg = self.backbone.load_state_dict(checkpoint, strict=False)
-        #         print(f"[CMNext] Single modal pretrained loaded: {msg}")
-        pass
-
+        """Load pretrained weights from a file."""
+        if pretrained:
+            load_stitchfusion_model(self.backbone, pretrained)
 
 
 @MODELS.register_module()
 class StitchFusionBackbone(BaseModule):
+    """
+    MMDetection-compatible wrapper for the StitchFusion model.
+    This class handles configuration, weight loading, stage freezing,
+    and the forward pass, making it usable in MMDetection configs.
+    """
+    
     def __init__(self,
-                 backbone: str = 'CMNeXt-B2',
+                 model_name: str = 'B2',
                  modals: List[str] = ['rgb', 'depth', 'event', 'lidar'],
                  out_indices: Tuple[int] = (0, 1, 2, 3),
                  frozen_stages: int = -1,
-                 freeze_fusion_with_stages: bool = True,
                  norm_eval: bool = False,
                  pretrained: Optional[str] = None,
-                 feature_norm: bool = True,  # 🔥 추가
                  init_cfg: Optional[dict] = None):
         
         super().__init__(init_cfg=init_cfg)
         
-        self.backbone_name = backbone
+        self.model_name = model_name
         self.modals = modals
         self.out_indices = out_indices
         self.frozen_stages = frozen_stages
         self.norm_eval = norm_eval
         
-        # Create CMNext base model
-        self.stitchfusion_model = StitchfusionBaseModel(
-            backbone=backbone, 
+        # Create the base model which contains the actual network
+        self.stitchfusion_model = StitchFusionBaseModel(
+            model_name=model_name, 
             modals=modals,
             init_cfg=init_cfg
         )
         
-        # Determine output channels based on backbone variant
-        if 'B0' in backbone or 'B1' in backbone:
-            self.out_channels = [64, 128, 320, 512]  # Typical MiT-B0/B1 channels
-        elif 'B2' in backbone:
-            self.out_channels = [64, 128, 320, 512]  # MiT-B2 channels
-        elif 'B3' in backbone:
-            self.out_channels = [64, 128, 320, 512]  # MiT-B3 channels
-        elif 'B4' in backbone:
-            self.out_channels = [64, 128, 320, 512]  # MiT-B4 channels
-        elif 'B5' in backbone:
-            self.out_channels = [64, 128, 320, 512]  # MiT-B5 channels
-        else:
-            self.out_channels = [64, 128, 320, 512]  # Default
-        
-        # Load pretrained weights if provided
+        # Load pretrained weights if a path is provided
         if pretrained:
             self.stitchfusion_model.init_pretrained(pretrained)
         
         self._freeze_stages()
     
-    def _freeze_stages(self, freeze_fusion_with_stages: bool = True):
-        """Freeze specified stages.
-        
-        frozen_stages options:
-        -1:  No freezing (전체 unfreeze)
-         0:  Freeze stage 0 (patch_embed1, block1, norm1 + extra modules + 해당 FRM/FFM)
-         1:  Freeze stages 0-1 (patch_embed1-2, block1-2, norm1-2 + extra modules + 해당 FRM/FFM)
-         2:  Freeze stages 0-2 (patch_embed1-3, block1-3, norm1-3 + extra modules + 해당 FRM/FFM)
-         3:  Freeze stages 0-3 (patch_embed1-4, block1-4, norm1-4 + extra modules + 해당 FRM/FFM)
-         999: Freeze all including FRMs/FFMs (완전 전체 freeze)
-         
-        Args:
-            freeze_fusion_with_stages: If True, freeze FRM/FFM along with corresponding stages
-        """
+    def _freeze_stages(self):
+        """Freeze specified stages of the backbone."""
         backbone = self.stitchfusion_model.backbone
         
-        if self.frozen_stages == -1:
-            # Unfreeze all - 모든 파라미터를 trainable로 설정
-            print("🔥 Unfreezing all stages")
-            for param in backbone.parameters():
-                param.requires_grad = True
-            return
+        if self.frozen_stages < 0:
+            return  # -1 means no stages are frozen
+
+        num_stages = 4  # stitchfusion has 4 stages
+        
+        for stage_idx in range(min(self.frozen_stages + 1, num_stages)):
+            print(f"🧊 Freezing StitchFusion stage {stage_idx}")
+            
+            # Freeze patch embedding, blocks, and norm for the stage
+            for component_name in [f"patch_embed{stage_idx+1}", f"block{stage_idx+1}", f"norm{stage_idx+1}"]:
+                if hasattr(backbone, component_name):
+                    component = getattr(backbone, component_name)
+                    component.eval()
+                    for param in component.parameters():
+                        param.requires_grad = False
+                    print(f"   - Frozen {component_name}")
+            
+            # Also freeze the corresponding fusion layer for that stage
+            if hasattr(backbone, 'feature_cross'):
+                fusion_layer = backbone.feature_cross.liner_fusion_layers[stage_idx]
+                fusion_layer.eval()
+                for param in fusion_layer.parameters():
+                    param.requires_grad = False
+                print(f"   - Frozen feature_cross layer {stage_idx}")
 
 
-    
     def forward(self, x: List[torch.Tensor]) -> Tuple[torch.Tensor]:
-        """Forward pass of CMNext backbone.
+        """
+        Defines the forward pass for the backbone.
         
         Args:
-            x: List of multimodal tensors [rgb_tensor, depth_tensor, event_tensor, lidar_tensor]
-               Each tensor has shape (B, C, H, W)
+            x: List of multimodal tensors, e.g., [rgb, depth, event, lidar]
         
         Returns:
-            Tuple of feature tensors from different stages
+            A tuple of feature maps from the specified output indices.
         """
+        # The core network logic is handled by the wrapped model
         features = self.stitchfusion_model.backbone(x)
         
-        # Convert to MMDetection standard format
-        # features should be a list/dict with multi-scale outputs
-        if isinstance(features, dict):
-            # If features is dict with keys like '0', '1', '2', '3'
-            outs = []
-            for idx in self.out_indices:
-                if str(idx) in features:
-                    outs.append(features[str(idx)])
-                elif idx in features:
-                    outs.append(features[idx])
-        elif isinstance(features, (list, tuple)):
-            # If features is list/tuple
-            outs = [features[i] for i in self.out_indices]
-        else:
-            raise ValueError(f"Unexpected features format: {type(features)}")
+        # Select the feature maps specified by out_indices for the FPN
+        outs = [features[i] for i in self.out_indices]
         
         return tuple(outs)
     
     def train(self, mode: bool = True):
-        """Set train/eval mode."""
+        """Set the module to training mode, handling norm_eval."""
         super().train(mode)
-        
+        self._freeze_stages()
         if mode and self.norm_eval:
-            # Set norm layers to eval mode
             for m in self.modules():
                 if isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
                     m.eval()
     
     def init_weights(self):
-        """개선된 weight 초기화"""
+        """
+        Initialize weights. If 'pretrained' is used, this will be
+        overridden. Otherwise, it initializes from scratch.
+        """
         if self.init_cfg is None:
-            # Apply custom weight initialization
             self.stitchfusion_model.apply(self.stitchfusion_model._init_weights)
-            
-            # 🔥 Backbone specific initialization
-            for name, module in self.named_modules():
-                if 'feature_cross' in name or 'liner_fusion' in name:
-                    if isinstance(module, nn.Linear):
-                        nn.init.xavier_uniform_(module.weight, gain=0.1)
-                        if module.bias is not None:
-                            nn.init.zeros_(module.bias)
         else:
             super().init_weights()
-            
-        # 🔥 Feature norm layers 초기화
-        if hasattr(self, 'feature_norms'):
-            for norm_layer in self.feature_norms:
-                nn.init.ones_(norm_layer.weight)
-                nn.init.zeros_(norm_layer.bias)
-
-
-
-
-
-
-if __name__ == '__main__':
-    modals = ['img', 'aolp', 'dolp', 'nir']
-    x = [torch.zeros(1, 3, 1024, 1024), torch.ones(1, 3, 1024, 1024), torch.ones(1, 3, 1024, 1024)*2, torch.ones(1, 3, 1024, 1024) *3]
-    model = stitchfusion('B2', modals)
-    outs = model(x)
-    for y in outs:
-        print(y.shape)

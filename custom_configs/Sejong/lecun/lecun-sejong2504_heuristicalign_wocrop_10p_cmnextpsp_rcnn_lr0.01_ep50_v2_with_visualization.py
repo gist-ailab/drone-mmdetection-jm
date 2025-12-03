@@ -9,6 +9,11 @@ data_root = '/ailab_mat2/dataset/drone/250312_sejong/drone_250312_sejong_V2/'
 dataset_type = 'SejongDetectionDataset'
 classes = ('Enemy', 'LandingMarker', 'Obstacle', 'FireExt', 'Door', 'Victim', 'Ally', 'Exit', 'Window', 'Light')
 
+custom_imports = dict(
+    imports=['mcdet.hooks.cmnext_visualization_hook'],
+    allow_failed_imports=False)
+
+
 # 🔥 1. 데이터 파이프라인 재정의 (가장 중요한 변경점)
 # -----------------------------------------------------------------
 train_pipeline = [
@@ -30,15 +35,15 @@ train_pipeline = [
 
 test_pipeline = [
     dict(type='LoadDELIVERImages'),
+    dict(type='LoadAnnotations', with_bbox=True), # 🔥 GT 로드를 위해 LoadDELIVERImages 직후로 이동
     dict(
         type='DELIVERResize',
         img_scale=(400, 381), # 🔥 (H, W) 순서로 원본 비율 고정
         keep_ratio=True,
         bbox_format='xywh'
     ),
-    dict(type='LoadAnnotations', with_bbox=True), # 🔥 GT 로드를 위해 추가
     dict(type='PackDELIVERDetInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor'))
+         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor', 'modality_paths'))
 ]
 
 
@@ -162,8 +167,8 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/train_filtered_cropped_400x381_10p.json',
-        data_prefix=dict(img='images_heuristic_cropped_400x381'),
+        ann_file=f'{data_root}labels/train_filtered_10p.json',
+        data_prefix=dict(img='images_heuristic'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         pipeline=train_pipeline,
         metainfo=dict(classes=classes)
@@ -179,8 +184,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=f'{data_root}labels/test_filtered_cropped_400x381_10p.json',
-        data_prefix=dict(img='images_heuristic_cropped_400x381'),
+        ann_file=f'{data_root}labels/test_filtered_10p.json',
+        data_prefix=dict(img='images_heuristic'),
         filter_cfg=dict(filter_empty_gt=True, min_size=5),
         test_mode=True,
         pipeline=test_pipeline,
@@ -191,7 +196,7 @@ test_dataloader = val_dataloader
 
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file=os.path.join(data_root, 'labels/test_filtered_cropped_400x381_10p.json'),
+    ann_file=os.path.join(data_root, 'labels/test_filtered_10p.json'),
     metric='bbox')
 
 # Training schedule
@@ -224,7 +229,7 @@ optim_wrapper = dict(
 
 
 
-experiment_name = 'sejong2504_heuristicalign_10p_cmnextpsp_b2_rcnn_multiscale_v2_with_visualization'
+experiment_name = 'sejong2504_heuristicalign_wocrop_10p_cmnextpsp_b2_rcnn_multiscale_v2_with_visualization'
 
 
 vis_backends = [
@@ -240,6 +245,7 @@ vis_backends = [
         ),
     )
 ]
+
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
     logger=dict(type='LoggerHook', interval=50),
@@ -274,9 +280,4 @@ visualizer = dict(
     name='visualizer'
 )
 
-
 find_unused_parameters = True
-
-
-
-

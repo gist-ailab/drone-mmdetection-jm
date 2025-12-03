@@ -1,0 +1,26 @@
+{
+  "statistics": {
+    "total_samples": 1,
+    "config_path": "custom_configs/Sejong/lecun/lecun-sejong2504_heuristicalign_wocrop_10p_cmnextpsp_rcnn_lr0.01_ep50_v2_with_visualization.py",
+    "checkpoint_path": "work_dirs/lecun-sejong2504_heuristicalign_10p_cmnextpsp_rcnn_lr0.01_ep50_v2_with_visualization/epoch_50.pth",
+    "evaluation_time": "2025-10-12T19:24:08.539768",
+    "class_names": [
+      "Enemy",
+      "LandingMarker",
+      "Obstacle",
+      "FireExt",
+      "Door",
+      "Victim",
+      "Ally",
+      "Exit",
+      "Window",
+      "Light"
+    ],
+    "processed_samples": 0,
+    "total_gt_objects": 0,
+    "total_pred_objects": 0,
+    "avg_gt_per_image": 0,
+    "avg_pred_per_image": 0
+  },
+  "sample_results": []
+}
